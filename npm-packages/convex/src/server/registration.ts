@@ -31,6 +31,7 @@ import { Scheduler } from "./scheduler.js";
 import { VectorSearchQuery } from "./vector_search.js";
 import { Expand } from "../type_utils.js";
 import { Validator } from "../values/validators.js";
+import * as Effect from "effect/Effect";
 
 /**
  * A set of services for use within Convex mutation functions.
@@ -74,7 +75,7 @@ export interface GenericMutationCtx<DataModel extends GenericDataModel> {
   runQuery: <Query extends FunctionReference<"query", "public" | "internal">>(
     query: Query,
     ...args: OptionalRestArgs<Query>
-  ) => Promise<FunctionReturnType<Query>>;
+  ) => Effect.Effect<FunctionReturnType<Query>>;
 
   /**
    * Call a mutation function within the same transaction.
@@ -92,7 +93,7 @@ export interface GenericMutationCtx<DataModel extends GenericDataModel> {
   >(
     mutation: Mutation,
     ...args: OptionalRestArgs<Mutation>
-  ) => Promise<FunctionReturnType<Mutation>>;
+  ) => Effect.Effect<FunctionReturnType<Mutation>>;
 }
 
 /**
@@ -149,7 +150,7 @@ export interface GenericQueryCtx<DataModel extends GenericDataModel> {
   runQuery: <Query extends FunctionReference<"query", "public" | "internal">>(
     query: Query,
     ...args: OptionalRestArgs<Query>
-  ) => Promise<FunctionReturnType<Query>>;
+  ) => Effect.Effect<FunctionReturnType<Query>>;
 }
 
 /**
@@ -196,7 +197,7 @@ export interface GenericActionCtx<DataModel extends GenericDataModel> {
   runQuery<Query extends FunctionReference<"query", "public" | "internal">>(
     query: Query,
     ...args: OptionalRestArgs<Query>
-  ): Promise<FunctionReturnType<Query>>;
+  ): Effect.Effect<FunctionReturnType<Query>>;
 
   /**
    * Run the Convex mutation with the given name and arguments.
@@ -213,7 +214,7 @@ export interface GenericActionCtx<DataModel extends GenericDataModel> {
   >(
     mutation: Mutation,
     ...args: OptionalRestArgs<Mutation>
-  ): Promise<FunctionReturnType<Mutation>>;
+  ): Effect.Effect<FunctionReturnType<Mutation>>;
 
   /**
    * Run the Convex action with the given name and arguments.
@@ -228,7 +229,7 @@ export interface GenericActionCtx<DataModel extends GenericDataModel> {
   runAction<Action extends FunctionReference<"action", "public" | "internal">>(
     action: Action,
     ...args: OptionalRestArgs<Action>
-  ): Promise<FunctionReturnType<Action>>;
+  ): Effect.Effect<FunctionReturnType<Action>>;
 
   /**
    * A utility for scheduling Convex functions to run in the future.
@@ -264,7 +265,7 @@ export interface GenericActionCtx<DataModel extends GenericDataModel> {
     query: Expand<
       VectorSearchQuery<NamedTableInfo<DataModel, TableName>, IndexName>
     >,
-  ): Promise<Array<{ _id: Id<TableName>; _score: number }>>;
+  ): Effect.Effect<Array<{ _id: Id<TableName>; _score: number }>>;
 }
 
 /**
@@ -329,12 +330,12 @@ export type FunctionVisibility = "public" | "internal";
  */
 type VisibilityProperties<Visiblity extends FunctionVisibility> =
   Visiblity extends "public"
-    ? {
-        isPublic: true;
-      }
-    : {
-        isInternal: true;
-      };
+  ? {
+    isPublic: true;
+  }
+  : {
+    isInternal: true;
+  };
 
 /**
  * A mutation function that is part of this app.
@@ -353,7 +354,7 @@ export type RegisteredMutation<
   isMutation: true;
 
   /** @internal */
-  invokeMutation(argsStr: string): Promise<string>;
+  invokeMutation(argsStr: string): Effect.Effect<string>;
 
   /** @internal */
   exportArgs(): string;
@@ -382,7 +383,7 @@ export type RegisteredQuery<
   isQuery: true;
 
   /** @internal */
-  invokeQuery(argsStr: string): Promise<string>;
+  invokeQuery(argsStr: string): Effect.Effect<string>;
 
   /** @internal */
   exportArgs(): string;
@@ -411,7 +412,7 @@ export type RegisteredAction<
   isAction: true;
 
   /** @internal */
-  invokeAction(requestId: string, argsStr: string): Promise<string>;
+  invokeAction(requestId: string, argsStr: string): Effect.Effect<string>;
 
   /** @internal */
   exportArgs(): string;
@@ -435,9 +436,9 @@ export type PublicHttpAction = {
   isHttp: true;
 
   /** @internal */
-  invokeHttpAction(request: Request): Promise<Response>;
+  invokeHttpAction(request: Request): Effect.Effect<Response>;
   /** @internal */
-  _handler: (ctx: GenericActionCtx<any>, request: Request) => Promise<Response>;
+  _handler: (ctx: GenericActionCtx<any>, request: Request) => Effect.Effect<Response>;
 };
 
 /**
@@ -472,8 +473,8 @@ export type PublicHttpAction = {
 export type UnvalidatedFunction<Ctx, Args extends ArgsArray, Returns> =
   | ((ctx: Ctx, ...args: Args) => Returns)
   | {
-      handler: (ctx: Ctx, ...args: Args) => Returns;
-    };
+    handler: (ctx: Ctx, ...args: Args) => Returns;
+  };
 
 /**
  * @deprecated -- See the type definition for `MutationBuilder` or similar for
@@ -576,24 +577,24 @@ export type ReturnValueForOptionalValidator<
 > = [ReturnsValidator] extends [Validator<any, any, any>]
   ? ValidatorTypeToReturnType<Infer<ReturnsValidator>>
   : [ReturnsValidator] extends [PropertyValidators]
-    ? ValidatorTypeToReturnType<ObjectType<ReturnsValidator>>
-    : any;
+  ? ValidatorTypeToReturnType<ObjectType<ReturnsValidator>>
+  : any;
 
 export type ArgsArrayForOptionalValidator<
   ArgsValidator extends GenericValidator | PropertyValidators | void,
 > = [ArgsValidator] extends [Validator<any, any, any>]
   ? OneArgArray<Infer<ArgsValidator>>
   : [ArgsValidator] extends [PropertyValidators]
-    ? OneArgArray<ObjectType<ArgsValidator>>
-    : ArgsArray;
+  ? OneArgArray<ObjectType<ArgsValidator>>
+  : ArgsArray;
 
 export type DefaultArgsForOptionalValidator<
   ArgsValidator extends GenericValidator | PropertyValidators | void,
 > = [ArgsValidator] extends [Validator<any, any, any>]
   ? [Infer<ArgsValidator>]
   : [ArgsValidator] extends [PropertyValidators]
-    ? [ObjectType<ArgsValidator>]
-    : OneArgArray;
+  ? [ObjectType<ArgsValidator>]
+  : OneArgArray;
 
 /**
  * Internal type helper used by Convex code generation.
@@ -607,80 +608,80 @@ export type MutationBuilder<
 > = {
   <
     ArgsValidator extends
-      | PropertyValidators
-      | Validator<any, "required", any>
-      | void,
+    | PropertyValidators
+    | Validator<any, "required", any>
+    | void,
     ReturnsValidator extends
-      | PropertyValidators
-      | Validator<any, "required", any>
-      | void,
+    | PropertyValidators
+    | Validator<any, "required", any>
+    | void,
     ReturnValue extends ReturnValueForOptionalValidator<ReturnsValidator> = any,
     OneOrZeroArgs extends
-      ArgsArrayForOptionalValidator<ArgsValidator> = DefaultArgsForOptionalValidator<ArgsValidator>,
+    ArgsArrayForOptionalValidator<ArgsValidator> = DefaultArgsForOptionalValidator<ArgsValidator>,
   >(
     mutation:
       | {
-          /**
-           * Argument validation.
-           *
-           * Examples:
-           *
-           * ```
-           * args: {}
-           * args: { input: v.optional(v.number()) }
-           * args: { message: v.string(), author: v.id("authors") }
-           * args: { messages: v.array(v.string()) }
-           * ```
-           */
-          args?: ArgsValidator;
-          /**
-           * The return value validator.
-           *
-           * Examples:
-           *
-           * ```
-           * returns: v.null()
-           * returns: v.string()
-           * returns: { message: v.string(), author: v.id("authors") }
-           * returns: v.array(v.string())
-           * ```
-           */
-          returns?: ReturnsValidator;
-          /**
-           * The implementation of this function.
-           *
-           * This is a function that takes in the appropriate context and arguments
-           * and produces some result.
-           *
-           * @param ctx - The context object. This is one of {@link QueryCtx},
-           * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
-           * @param args - The arguments object for this function. This will match
-           * the type defined by the argument validator if provided.
-           * @returns
-           */
-          handler: (
-            ctx: GenericMutationCtx<DataModel>,
-            ...args: OneOrZeroArgs
-          ) => ReturnValue;
-        }
+        /**
+         * Argument validation.
+         *
+         * Examples:
+         *
+         * ```
+         * args: {}
+         * args: { input: v.optional(v.number()) }
+         * args: { message: v.string(), author: v.id("authors") }
+         * args: { messages: v.array(v.string()) }
+         * ```
+         */
+        args?: ArgsValidator;
+        /**
+         * The return value validator.
+         *
+         * Examples:
+         *
+         * ```
+         * returns: v.null()
+         * returns: v.string()
+         * returns: { message: v.string(), author: v.id("authors") }
+         * returns: v.array(v.string())
+         * ```
+         */
+        returns?: ReturnsValidator;
+        /**
+         * The implementation of this function.
+         *
+         * This is a function that takes in the appropriate context and arguments
+         * and produces some result.
+         *
+         * @param ctx - The context object. This is one of {@link QueryCtx},
+         * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
+         * @param args - The arguments object for this function. This will match
+         * the type defined by the argument validator if provided.
+         * @returns
+         */
+        handler: (
+          ctx: GenericMutationCtx<DataModel>,
+          ...args: OneOrZeroArgs
+        ) => ReturnValue;
+      }
       | {
-          /**
-           * The implementation of this function.
-           *
-           * This is a function that takes in the appropriate context and arguments
-           * and produces some result.
-           *
-           * @param ctx - The context object. This is one of {@link QueryCtx},
-           * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
-           * @param args - The arguments object for this function. This will match
-           * the type defined by the argument validator if provided.
-           * @returns
-           */
-          (
-            ctx: GenericMutationCtx<DataModel>,
-            ...args: OneOrZeroArgs
-          ): ReturnValue;
-        },
+        /**
+         * The implementation of this function.
+         *
+         * This is a function that takes in the appropriate context and arguments
+         * and produces some result.
+         *
+         * @param ctx - The context object. This is one of {@link QueryCtx},
+         * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
+         * @param args - The arguments object for this function. This will match
+         * the type defined by the argument validator if provided.
+         * @returns
+         */
+        (
+          ctx: GenericMutationCtx<DataModel>,
+          ...args: OneOrZeroArgs
+        ): ReturnValue;
+      },
   ): RegisteredMutation<
     Visibility,
     ArgsArrayToObject<OneOrZeroArgs>,
@@ -700,80 +701,80 @@ export type MutationBuilderWithTable<
 > = {
   <
     ArgsValidator extends
-      | PropertyValidators
-      | Validator<any, "required", any>
-      | void,
+    | PropertyValidators
+    | Validator<any, "required", any>
+    | void,
     ReturnsValidator extends
-      | PropertyValidators
-      | Validator<any, "required", any>
-      | void,
+    | PropertyValidators
+    | Validator<any, "required", any>
+    | void,
     ReturnValue extends ReturnValueForOptionalValidator<ReturnsValidator> = any,
     OneOrZeroArgs extends
-      ArgsArrayForOptionalValidator<ArgsValidator> = DefaultArgsForOptionalValidator<ArgsValidator>,
+    ArgsArrayForOptionalValidator<ArgsValidator> = DefaultArgsForOptionalValidator<ArgsValidator>,
   >(
     mutation:
       | {
-          /**
-           * Argument validation.
-           *
-           * Examples:
-           *
-           * ```
-           * args: {}
-           * args: { input: v.optional(v.number()) }
-           * args: { message: v.string(), author: v.id("authors") }
-           * args: { messages: v.array(v.string()) }
-           * ```
-           */
-          args?: ArgsValidator;
-          /**
-           * The return value validator.
-           *
-           * Examples:
-           *
-           * ```
-           * returns: v.null()
-           * returns: v.string()
-           * returns: { message: v.string(), author: v.id("authors") }
-           * returns: v.array(v.string())
-           * ```
-           */
-          returns?: ReturnsValidator;
-          /**
-           * The implementation of this function.
-           *
-           * This is a function that takes in the appropriate context and arguments
-           * and produces some result.
-           *
-           * @param ctx - The context object. This is one of {@link QueryCtx},
-           * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
-           * @param args - The arguments object for this function. This will match
-           * the type defined by the argument validator if provided.
-           * @returns
-           */
-          handler: (
-            ctx: GenericMutationCtxWithTable<DataModel>,
-            ...args: OneOrZeroArgs
-          ) => ReturnValue;
-        }
+        /**
+         * Argument validation.
+         *
+         * Examples:
+         *
+         * ```
+         * args: {}
+         * args: { input: v.optional(v.number()) }
+         * args: { message: v.string(), author: v.id("authors") }
+         * args: { messages: v.array(v.string()) }
+         * ```
+         */
+        args?: ArgsValidator;
+        /**
+         * The return value validator.
+         *
+         * Examples:
+         *
+         * ```
+         * returns: v.null()
+         * returns: v.string()
+         * returns: { message: v.string(), author: v.id("authors") }
+         * returns: v.array(v.string())
+         * ```
+         */
+        returns?: ReturnsValidator;
+        /**
+         * The implementation of this function.
+         *
+         * This is a function that takes in the appropriate context and arguments
+         * and produces some result.
+         *
+         * @param ctx - The context object. This is one of {@link QueryCtx},
+         * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
+         * @param args - The arguments object for this function. This will match
+         * the type defined by the argument validator if provided.
+         * @returns
+         */
+        handler: (
+          ctx: GenericMutationCtxWithTable<DataModel>,
+          ...args: OneOrZeroArgs
+        ) => ReturnValue;
+      }
       | {
-          /**
-           * The implementation of this function.
-           *
-           * This is a function that takes in the appropriate context and arguments
-           * and produces some result.
-           *
-           * @param ctx - The context object. This is one of {@link QueryCtx},
-           * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
-           * @param args - The arguments object for this function. This will match
-           * the type defined by the argument validator if provided.
-           * @returns
-           */
-          (
-            ctx: GenericMutationCtxWithTable<DataModel>,
-            ...args: OneOrZeroArgs
-          ): ReturnValue;
-        },
+        /**
+         * The implementation of this function.
+         *
+         * This is a function that takes in the appropriate context and arguments
+         * and produces some result.
+         *
+         * @param ctx - The context object. This is one of {@link QueryCtx},
+         * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
+         * @param args - The arguments object for this function. This will match
+         * the type defined by the argument validator if provided.
+         * @returns
+         */
+        (
+          ctx: GenericMutationCtxWithTable<DataModel>,
+          ...args: OneOrZeroArgs
+        ): ReturnValue;
+      },
   ): RegisteredMutation<
     Visibility,
     ArgsArrayToObject<OneOrZeroArgs>,
@@ -793,80 +794,80 @@ export type QueryBuilder<
 > = {
   <
     ArgsValidator extends
-      | PropertyValidators
-      | Validator<any, "required", any>
-      | void,
+    | PropertyValidators
+    | Validator<any, "required", any>
+    | void,
     ReturnsValidator extends
-      | PropertyValidators
-      | Validator<any, "required", any>
-      | void,
+    | PropertyValidators
+    | Validator<any, "required", any>
+    | void,
     ReturnValue extends ReturnValueForOptionalValidator<ReturnsValidator> = any,
     OneOrZeroArgs extends
-      ArgsArrayForOptionalValidator<ArgsValidator> = DefaultArgsForOptionalValidator<ArgsValidator>,
+    ArgsArrayForOptionalValidator<ArgsValidator> = DefaultArgsForOptionalValidator<ArgsValidator>,
   >(
     query:
       | {
-          /**
-           * Argument validation.
-           *
-           * Examples:
-           *
-           * ```
-           * args: {}
-           * args: { input: v.optional(v.number()) }
-           * args: { message: v.string(), author: v.id("authors") }
-           * args: { messages: v.array(v.string()) }
-           * ```
-           */
-          args?: ArgsValidator;
-          /**
-           * The return value validator.
-           *
-           * Examples:
-           *
-           * ```
-           * returns: v.null()
-           * returns: v.string()
-           * returns: { message: v.string(), author: v.id("authors") }
-           * returns: v.array(v.string())
-           * ```
-           */
-          returns?: ReturnsValidator;
-          /**
-           * The implementation of this function.
-           *
-           * This is a function that takes in the appropriate context and arguments
-           * and produces some result.
-           *
-           * @param ctx - The context object. This is one of {@link QueryCtx},
-           * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
-           * @param args - The arguments object for this function. This will match
-           * the type defined by the argument validator if provided.
-           * @returns
-           */
-          handler: (
-            ctx: GenericQueryCtx<DataModel>,
-            ...args: OneOrZeroArgs
-          ) => ReturnValue;
-        }
+        /**
+         * Argument validation.
+         *
+         * Examples:
+         *
+         * ```
+         * args: {}
+         * args: { input: v.optional(v.number()) }
+         * args: { message: v.string(), author: v.id("authors") }
+         * args: { messages: v.array(v.string()) }
+         * ```
+         */
+        args?: ArgsValidator;
+        /**
+         * The return value validator.
+         *
+         * Examples:
+         *
+         * ```
+         * returns: v.null()
+         * returns: v.string()
+         * returns: { message: v.string(), author: v.id("authors") }
+         * returns: v.array(v.string())
+         * ```
+         */
+        returns?: ReturnsValidator;
+        /**
+         * The implementation of this function.
+         *
+         * This is a function that takes in the appropriate context and arguments
+         * and produces some result.
+         *
+         * @param ctx - The context object. This is one of {@link QueryCtx},
+         * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
+         * @param args - The arguments object for this function. This will match
+         * the type defined by the argument validator if provided.
+         * @returns
+         */
+        handler: (
+          ctx: GenericQueryCtx<DataModel>,
+          ...args: OneOrZeroArgs
+        ) => ReturnValue;
+      }
       | {
-          /**
-           * The implementation of this function.
-           *
-           * This is a function that takes in the appropriate context and arguments
-           * and produces some result.
-           *
-           * @param ctx - The context object. This is one of {@link QueryCtx},
-           * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
-           * @param args - The arguments object for this function. This will match
-           * the type defined by the argument validator if provided.
-           * @returns
-           */
-          (
-            ctx: GenericQueryCtx<DataModel>,
-            ...args: OneOrZeroArgs
-          ): ReturnValue;
-        },
+        /**
+         * The implementation of this function.
+         *
+         * This is a function that takes in the appropriate context and arguments
+         * and produces some result.
+         *
+         * @param ctx - The context object. This is one of {@link QueryCtx},
+         * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
+         * @param args - The arguments object for this function. This will match
+         * the type defined by the argument validator if provided.
+         * @returns
+         */
+        (
+          ctx: GenericQueryCtx<DataModel>,
+          ...args: OneOrZeroArgs
+        ): ReturnValue;
+      },
   ): RegisteredQuery<Visibility, ArgsArrayToObject<OneOrZeroArgs>, ReturnValue>;
 };
 
@@ -882,80 +883,80 @@ export type QueryBuilderWithTable<
 > = {
   <
     ArgsValidator extends
-      | PropertyValidators
-      | Validator<any, "required", any>
-      | void,
+    | PropertyValidators
+    | Validator<any, "required", any>
+    | void,
     ReturnsValidator extends
-      | PropertyValidators
-      | Validator<any, "required", any>
-      | void,
+    | PropertyValidators
+    | Validator<any, "required", any>
+    | void,
     ReturnValue extends ReturnValueForOptionalValidator<ReturnsValidator> = any,
     OneOrZeroArgs extends
-      ArgsArrayForOptionalValidator<ArgsValidator> = DefaultArgsForOptionalValidator<ArgsValidator>,
+    ArgsArrayForOptionalValidator<ArgsValidator> = DefaultArgsForOptionalValidator<ArgsValidator>,
   >(
     query:
       | {
-          /**
-           * Argument validation.
-           *
-           * Examples:
-           *
-           * ```
-           * args: {}
-           * args: { input: v.optional(v.number()) }
-           * args: { message: v.string(), author: v.id("authors") }
-           * args: { messages: v.array(v.string()) }
-           * ```
-           */
-          args?: ArgsValidator;
-          /**
-           * The return value validator.
-           *
-           * Examples:
-           *
-           * ```
-           * returns: v.null()
-           * returns: v.string()
-           * returns: { message: v.string(), author: v.id("authors") }
-           * returns: v.array(v.string())
-           * ```
-           */
-          returns?: ReturnsValidator;
-          /**
-           * The implementation of this function.
-           *
-           * This is a function that takes in the appropriate context and arguments
-           * and produces some result.
-           *
-           * @param ctx - The context object. This is one of {@link QueryCtx},
-           * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
-           * @param args - The arguments object for this function. This will match
-           * the type defined by the argument validator if provided.
-           * @returns
-           */
-          handler: (
-            ctx: GenericQueryCtxWithTable<DataModel>,
-            ...args: OneOrZeroArgs
-          ) => ReturnValue;
-        }
+        /**
+         * Argument validation.
+         *
+         * Examples:
+         *
+         * ```
+         * args: {}
+         * args: { input: v.optional(v.number()) }
+         * args: { message: v.string(), author: v.id("authors") }
+         * args: { messages: v.array(v.string()) }
+         * ```
+         */
+        args?: ArgsValidator;
+        /**
+         * The return value validator.
+         *
+         * Examples:
+         *
+         * ```
+         * returns: v.null()
+         * returns: v.string()
+         * returns: { message: v.string(), author: v.id("authors") }
+         * returns: v.array(v.string())
+         * ```
+         */
+        returns?: ReturnsValidator;
+        /**
+         * The implementation of this function.
+         *
+         * This is a function that takes in the appropriate context and arguments
+         * and produces some result.
+         *
+         * @param ctx - The context object. This is one of {@link QueryCtx},
+         * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
+         * @param args - The arguments object for this function. This will match
+         * the type defined by the argument validator if provided.
+         * @returns
+         */
+        handler: (
+          ctx: GenericQueryCtxWithTable<DataModel>,
+          ...args: OneOrZeroArgs
+        ) => ReturnValue;
+      }
       | {
-          /**
-           * The implementation of this function.
-           *
-           * This is a function that takes in the appropriate context and arguments
-           * and produces some result.
-           *
-           * @param ctx - The context object. This is one of {@link QueryCtx},
-           * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
-           * @param args - The arguments object for this function. This will match
-           * the type defined by the argument validator if provided.
-           * @returns
-           */
-          (
-            ctx: GenericQueryCtxWithTable<DataModel>,
-            ...args: OneOrZeroArgs
-          ): ReturnValue;
-        },
+        /**
+         * The implementation of this function.
+         *
+         * This is a function that takes in the appropriate context and arguments
+         * and produces some result.
+         *
+         * @param ctx - The context object. This is one of {@link QueryCtx},
+         * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
+         * @param args - The arguments object for this function. This will match
+         * the type defined by the argument validator if provided.
+         * @returns
+         */
+        (
+          ctx: GenericQueryCtxWithTable<DataModel>,
+          ...args: OneOrZeroArgs
+        ): ReturnValue;
+      },
   ): RegisteredQuery<Visibility, ArgsArrayToObject<OneOrZeroArgs>, ReturnValue>;
 };
 
@@ -971,81 +972,81 @@ export type ActionBuilder<
 > = {
   <
     ArgsValidator extends
-      | PropertyValidators
-      | Validator<any, "required", any>
-      | void,
+    | PropertyValidators
+    | Validator<any, "required", any>
+    | void,
     ReturnsValidator extends
-      | PropertyValidators
-      | Validator<any, "required", any>
-      | void,
+    | PropertyValidators
+    | Validator<any, "required", any>
+    | void,
     ReturnValue extends ReturnValueForOptionalValidator<ReturnsValidator> = any,
     OneOrZeroArgs extends
-      ArgsArrayForOptionalValidator<ArgsValidator> = DefaultArgsForOptionalValidator<ArgsValidator>,
+    ArgsArrayForOptionalValidator<ArgsValidator> = DefaultArgsForOptionalValidator<ArgsValidator>,
   >(
     func:
       | {
-          /**
-           * Argument validation.
-           *
-           * Examples:
-           *
-           * ```
-           * args: {}
-           * args: { input: v.optional(v.number()) }
-           * args: { message: v.string(), author: v.id("authors") }
-           * args: { messages: v.array(v.string()) }
-           * ```
-           *
-           */
-          args?: ArgsValidator;
-          /**
-           * The return value validator.
-           *
-           * Examples:
-           *
-           * ```
-           * returns: v.null()
-           * returns: v.string()
-           * returns: { message: v.string(), author: v.id("authors") }
-           * returns: v.array(v.string())
-           * ```
-           */
-          returns?: ReturnsValidator;
-          /**
-           * The implementation of this function.
-           *
-           * This is a function that takes in the appropriate context and arguments
-           * and produces some result.
-           *
-           * @param ctx - The context object. This is one of {@link QueryCtx},
-           * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
-           * @param args - The arguments object for this function. This will match
-           * the type defined by the argument validator if provided.
-           * @returns
-           */
-          handler: (
-            ctx: GenericActionCtx<DataModel>,
-            ...args: OneOrZeroArgs
-          ) => ReturnValue;
-        }
+        /**
+         * Argument validation.
+         *
+         * Examples:
+         *
+         * ```
+         * args: {}
+         * args: { input: v.optional(v.number()) }
+         * args: { message: v.string(), author: v.id("authors") }
+         * args: { messages: v.array(v.string()) }
+         * ```
+         *
+         */
+        args?: ArgsValidator;
+        /**
+         * The return value validator.
+         *
+         * Examples:
+         *
+         * ```
+         * returns: v.null()
+         * returns: v.string()
+         * returns: { message: v.string(), author: v.id("authors") }
+         * returns: v.array(v.string())
+         * ```
+         */
+        returns?: ReturnsValidator;
+        /**
+         * The implementation of this function.
+         *
+         * This is a function that takes in the appropriate context and arguments
+         * and produces some result.
+         *
+         * @param ctx - The context object. This is one of {@link QueryCtx},
+         * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
+         * @param args - The arguments object for this function. This will match
+         * the type defined by the argument validator if provided.
+         * @returns
+         */
+        handler: (
+          ctx: GenericActionCtx<DataModel>,
+          ...args: OneOrZeroArgs
+        ) => ReturnValue;
+      }
       | {
-          /**
-           * The implementation of this function.
-           *
-           * This is a function that takes in the appropriate context and arguments
-           * and produces some result.
-           *
-           * @param ctx - The context object. This is one of {@link QueryCtx},
-           * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
-           * @param args - The arguments object for this function. This will match
-           * the type defined by the argument validator if provided.
-           * @returns
-           */
-          (
-            ctx: GenericActionCtx<DataModel>,
-            ...args: OneOrZeroArgs
-          ): ReturnValue;
-        },
+        /**
+         * The implementation of this function.
+         *
+         * This is a function that takes in the appropriate context and arguments
+         * and produces some result.
+         *
+         * @param ctx - The context object. This is one of {@link QueryCtx},
+         * {@link MutationCtx}, or {@link ActionCtx} depending on the function type.
+         * @param args - The arguments object for this function. This will match
+         * the type defined by the argument validator if provided.
+         * @returns
+         */
+        (
+          ctx: GenericActionCtx<DataModel>,
+          ...args: OneOrZeroArgs
+        ): ReturnValue;
+      },
   ): RegisteredAction<
     Visibility,
     ArgsArrayToObject<OneOrZeroArgs>,
@@ -1061,5 +1062,5 @@ export type ActionBuilder<
  * @public
  */
 export type HttpActionBuilder = (
-  func: (ctx: GenericActionCtx<any>, request: Request) => Promise<Response>,
+  func: (ctx: GenericActionCtx<any>, request: Request) => Effect.Effect<Response>,
 ) => PublicHttpAction;

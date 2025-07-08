@@ -1,7 +1,13 @@
-import { getFunctionName, OptionalRestArgs } from "../server/api.js";
+import { FunctionReferenceError, getFunctionName, OptionalRestArgs } from "../server/api.js";
 import { parseArgs } from "../common/index.js";
 import { convexToJson, JSONValue, Value } from "../values/index.js";
 import { SchedulableFunctionReference } from "./scheduler.js";
+import * as Data from "effect/Data";
+import * as Either from "effect/Either";
+
+export class CronError extends Data.TaggedError("CronError")<{
+  message: string;
+}> { }
 
 type CronSchedule = {
   type: "cron";
@@ -55,32 +61,32 @@ export type MonthlySchedule = {
 /** @public */
 export type Interval =
   | {
-      /**
-       * Run a job every `seconds` seconds, beginning
-       * when the job is first deployed to Convex.
-       */
-      seconds: number;
-      minutes?: undefined;
-      hours?: undefined;
-    }
+    /**
+     * Run a job every `seconds` seconds, beginning
+     * when the job is first deployed to Convex.
+     */
+    seconds: number;
+    minutes?: undefined;
+    hours?: undefined;
+  }
   | {
-      /**
-       * Run a job every `minutes` minutes, beginning
-       * when the job is first deployed to Convex.
-       */
-      minutes: number;
-      seconds?: undefined;
-      hours?: undefined;
-    }
+    /**
+     * Run a job every `minutes` minutes, beginning
+     * when the job is first deployed to Convex.
+     */
+    minutes: number;
+    seconds?: undefined;
+    hours?: undefined;
+  }
   | {
-      /**
-       * Run a job every `hours` hours, beginning when
-       * when the job is first deployed to Convex.
-       */
-      hours: number;
-      seconds?: undefined;
-      minutes?: undefined;
-    };
+    /**
+     * Run a job every `hours` hours, beginning when
+     * when the job is first deployed to Convex.
+     */
+    hours: number;
+    seconds?: undefined;
+    minutes?: undefined;
+  };
 
 /** @public */
 export type Hourly = {
@@ -186,51 +192,74 @@ export const cronJobs = () => new Crons();
  */
 type CronString = string;
 
-function validateIntervalNumber(n: number) {
+function validateIntervalNumber(n: number): Either.Either<number, CronError> {
   if (!Number.isInteger(n) || n <= 0) {
-    throw new Error("Interval must be an integer greater than 0");
+    return Either.left(
+      new CronError({
+        message: "Interval must be an integer greater than 0",
+      }),
+    );
   }
+  return Either.right(n);
 }
 
-function validatedDayOfMonth(n: number) {
+function validatedDayOfMonth(n: number): Either.Either<number, CronError> {
   if (!Number.isInteger(n) || n < 1 || n > 31) {
-    throw new Error("Day of month must be an integer from 1 to 31");
+    return Either.left(
+      new CronError({
+        message: "Day of month must be an integer from 1 to 31",
+      }),
+    );
   }
-  return n;
+  return Either.right(n);
 }
 
-function validatedDayOfWeek(s: string) {
+function validatedDayOfWeek(s: string): Either.Either<DayOfWeek, CronError> {
   if (!DAYS_OF_WEEK.includes(s as DayOfWeek)) {
-    throw new Error('Day of week must be a string like "monday".');
+    return Either.left(
+      new CronError({
+        message: 'Day of week must be a string like "monday".',
+      }),
+    );
   }
-  return s as DayOfWeek;
+  return Either.right(s as DayOfWeek);
 }
 
-function validatedHourOfDay(n: number) {
+function validatedHourOfDay(n: number): Either.Either<number, CronError> {
   if (!Number.isInteger(n) || n < 0 || n > 23) {
-    throw new Error("Hour of day must be an integer from 0 to 23");
+    return Either.left(
+      new CronError({
+        message: "Hour of day must be an integer from 0 to 23",
+      }),
+    );
   }
-  return n;
+  return Either.right(n);
 }
 
-function validatedMinuteOfHour(n: number) {
+function validatedMinuteOfHour(n: number): Either.Either<number, CronError> {
   if (!Number.isInteger(n) || n < 0 || n > 59) {
-    throw new Error("Minute of hour must be an integer from 0 to 59");
+    return Either.left(
+      new CronError({
+        message: "Minute of hour must be an integer from 0 to 59",
+      }),
+    );
   }
-  return n;
+  return Either.right(n);
 }
 
 function validatedCronString(s: string) {
   return s;
 }
 
-function validatedCronIdentifier(s: string) {
+function validatedCronIdentifier(s: string): Either.Either<string, CronError> {
   if (!s.match(/^[ -~]*$/)) {
-    throw new Error(
-      `Invalid cron identifier ${s}: use ASCII letters that are not control characters`,
+    return Either.left(
+      new CronError({
+        message: `Invalid cron identifier ${s}: use ASCII letters that are not control characters`,
+      }),
     );
   }
-  return s;
+  return Either.right(s);
 }
 
 /**
@@ -254,17 +283,25 @@ export class Crons {
     schedule: Schedule,
     functionReference: SchedulableFunctionReference,
     args?: Record<string, Value>,
-  ) {
-    const cronArgs = parseArgs(args);
-    validatedCronIdentifier(cronIdentifier);
-    if (cronIdentifier in this.crons) {
-      throw new Error(`Cron identifier registered twice: ${cronIdentifier}`);
-    }
-    this.crons[cronIdentifier] = {
-      name: getFunctionName(functionReference),
-      args: [convexToJson(cronArgs)],
-      schedule: schedule,
-    };
+  ): Either.Either<void, CronError> {
+    return Either.gen(this, function* () {
+      const cronArgs = parseArgs(args);
+      const cronIdentifier_ = yield* validatedCronIdentifier(cronIdentifier);
+      const functionName = yield* getFunctionName(functionReference);
+      if (cronIdentifier_ in this.crons) {
+        yield* Either.left(new CronError({
+          message: `Cron identifier registered twice: ${cronIdentifier}`,
+        }));
+      }
+      const argsJson = yield* convexToJson(cronArgs);
+      this.crons[cronIdentifier_] = {
+        name: functionName,
+        args: [argsJson],
+        schedule: schedule,
+      }
+    }).pipe(
+      Either.mapLeft((e) => new CronError({ message: e.message })),
+    )
   }
 
   /**
@@ -285,28 +322,34 @@ export class Crons {
     schedule: Interval,
     functionReference: FuncRef,
     ...args: OptionalRestArgs<FuncRef>
-  ) {
-    const s = schedule;
-    const hasSeconds = +("seconds" in s && s.seconds !== undefined);
-    const hasMinutes = +("minutes" in s && s.minutes !== undefined);
-    const hasHours = +("hours" in s && s.hours !== undefined);
-    const total = hasSeconds + hasMinutes + hasHours;
-    if (total !== 1) {
-      throw new Error("Must specify one of seconds, minutes, or hours");
-    }
-    if (hasSeconds) {
-      validateIntervalNumber(schedule.seconds!);
-    } else if (hasMinutes) {
-      validateIntervalNumber(schedule.minutes!);
-    } else if (hasHours) {
-      validateIntervalNumber(schedule.hours!);
-    }
-    this.schedule(
-      cronIdentifier,
-      { ...schedule, type: "interval" },
-      functionReference,
-      ...args,
-    );
+  ): Either.Either<void, CronError | FunctionReferenceError> {
+    return Either.gen(this, function* () {
+      const s = schedule;
+      const hasSeconds = +("seconds" in s && s.seconds !== undefined);
+      const hasMinutes = +("minutes" in s && s.minutes !== undefined);
+      const hasHours = +("hours" in s && s.hours !== undefined);
+      const total = hasSeconds + hasMinutes + hasHours;
+      if (total !== 1) {
+        yield* Either.left(
+          new CronError({
+            message: "Must specify one of seconds, minutes, or hours",
+          }),
+        );
+      }
+      if (hasSeconds) {
+        yield* validateIntervalNumber(schedule.seconds!);
+      } else if (hasMinutes) {
+        yield* validateIntervalNumber(schedule.minutes!);
+      } else if (hasHours) {
+        yield* validateIntervalNumber(schedule.hours!);
+      }
+      this.schedule(
+        cronIdentifier,
+        { ...schedule, type: "interval" },
+        functionReference,
+        ...args,
+      )
+    })
   }
 
   /**
@@ -333,14 +376,15 @@ export class Crons {
     schedule: Hourly,
     functionReference: FuncRef,
     ...args: OptionalRestArgs<FuncRef>
-  ) {
-    const minuteUTC = validatedMinuteOfHour(schedule.minuteUTC);
-    this.schedule(
-      cronIdentifier,
-      { minuteUTC, type: "hourly" },
-      functionReference,
-      ...args,
-    );
+  ): Either.Either<void, CronError | FunctionReferenceError> {
+    return validatedMinuteOfHour(schedule.minuteUTC).pipe(
+      Either.flatMap((minuteUTC) => this.schedule(
+        cronIdentifier,
+        { minuteUTC, type: "hourly" },
+        functionReference,
+        ...args,
+      ))
+    )
   }
 
   /**
@@ -368,15 +412,17 @@ export class Crons {
     schedule: Daily,
     functionReference: FuncRef,
     ...args: OptionalRestArgs<FuncRef>
-  ) {
-    const hourUTC = validatedHourOfDay(schedule.hourUTC);
-    const minuteUTC = validatedMinuteOfHour(schedule.minuteUTC);
-    this.schedule(
-      cronIdentifier,
-      { hourUTC, minuteUTC, type: "daily" },
-      functionReference,
-      ...args,
-    );
+  ): Either.Either<void, CronError | FunctionReferenceError> {
+    return Either.gen(this, function* () {
+      const hourUTC = yield* validatedHourOfDay(schedule.hourUTC);
+      const minuteUTC = yield* validatedMinuteOfHour(schedule.minuteUTC);
+      yield* this.schedule(
+        cronIdentifier,
+        { hourUTC, minuteUTC, type: "daily" },
+        functionReference,
+        ...args,
+      )
+    })
   }
 
   /**
@@ -405,15 +451,17 @@ export class Crons {
     functionReference: FuncRef,
     ...args: OptionalRestArgs<FuncRef>
   ) {
-    const dayOfWeek = validatedDayOfWeek(schedule.dayOfWeek);
-    const hourUTC = validatedHourOfDay(schedule.hourUTC);
-    const minuteUTC = validatedMinuteOfHour(schedule.minuteUTC);
-    this.schedule(
-      cronIdentifier,
-      { dayOfWeek, hourUTC, minuteUTC, type: "weekly" },
-      functionReference,
-      ...args,
-    );
+    return Either.gen(this, function* () {
+      const dayOfWeek = yield* validatedDayOfWeek(schedule.dayOfWeek);
+      const hourUTC = yield* validatedHourOfDay(schedule.hourUTC);
+      const minuteUTC = yield* validatedMinuteOfHour(schedule.minuteUTC);
+      yield* this.schedule(
+        cronIdentifier,
+        { dayOfWeek, hourUTC, minuteUTC, type: "weekly" },
+        functionReference,
+        ...args,
+      );
+    })
   }
 
   /**
@@ -446,15 +494,17 @@ export class Crons {
     functionReference: FuncRef,
     ...args: OptionalRestArgs<FuncRef>
   ) {
-    const day = validatedDayOfMonth(schedule.day);
-    const hourUTC = validatedHourOfDay(schedule.hourUTC);
-    const minuteUTC = validatedMinuteOfHour(schedule.minuteUTC);
-    this.schedule(
-      cronIdentifier,
-      { day, hourUTC, minuteUTC, type: "monthly" },
-      functionReference,
-      ...args,
-    );
+    return Either.gen(this, function* () {
+      const day = yield* validatedDayOfMonth(schedule.day);
+      const hourUTC = yield* validatedHourOfDay(schedule.hourUTC);
+      const minuteUTC = yield* validatedMinuteOfHour(schedule.minuteUTC);
+      yield* this.schedule(
+        cronIdentifier,
+        { day, hourUTC, minuteUTC, type: "monthly" },
+        functionReference,
+        ...args,
+      );
+    })
   }
 
   /**
@@ -484,7 +534,7 @@ export class Crons {
     ...args: OptionalRestArgs<FuncRef>
   ) {
     const c = validatedCronString(cron);
-    this.schedule(
+    return this.schedule(
       cronIdentifier,
       { cron: c, type: "cron" },
       functionReference,

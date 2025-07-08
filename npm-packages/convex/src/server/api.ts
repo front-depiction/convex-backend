@@ -10,6 +10,17 @@ import { Expand, UnionToIntersection } from "../type_utils.js";
 import { PaginationOptions, PaginationResult } from "./pagination.js";
 import { functionName } from "./functionName.js";
 import { getFunctionAddress } from "./components/paths.js";
+import * as Data from "effect/Data";
+import * as Either from "effect/Either";
+import * as Effect from "effect/Effect";
+
+export class FunctionReferenceError extends Data.TaggedError("FunctionReferenceError")<{
+  message: string;
+}> { }
+
+export class ApiPathError extends Data.TaggedError("ApiPathError")<{
+  message: string;
+}> { }
 
 /**
  * The type of a Convex function.
@@ -71,41 +82,52 @@ export type FunctionReference<
  * (e.g. "myDir/myModule").
  *
  * @param functionReference - A {@link FunctionReference} to get the name of.
- * @returns A string of the function's name.
+ * @returns An {@link Either} of the function's name or a {@link FunctionReferenceError}.
  *
  * @public
  */
 export function getFunctionName(
   functionReference: AnyFunctionReference,
-): string {
+): Either.Either<string, FunctionReferenceError> {
   const address = getFunctionAddress(functionReference);
 
   if (address.name === undefined) {
     if (address.functionHandle !== undefined) {
-      throw new Error(
-        `Expected function reference like "api.file.func" or "internal.file.func", but received function handle ${address.functionHandle}`,
+      return Either.left(
+        new FunctionReferenceError({
+          message: `Expected function reference like "api.file.func" or "internal.file.func", but received function handle ${address.functionHandle}`,
+        }),
       );
     } else if (address.reference !== undefined) {
-      throw new Error(
-        `Expected function reference in the current component like "api.file.func" or "internal.file.func", but received reference ${address.reference}`,
+      return Either.left(
+        new FunctionReferenceError({
+          message: `Expected function reference in the current component like "api.file.func" or "internal.file.func", but received reference ${address.reference}`,
+        }),
       );
     }
-    throw new Error(
-      `Expected function reference like "api.file.func" or "internal.file.func", but received ${JSON.stringify(address)}`,
+    return Either.left(
+      new FunctionReferenceError({
+        message: `Expected function reference like "api.file.func" or "internal.file.func", but received ${JSON.stringify(address)}`,
+      }),
     );
   }
   // Both a legacy thing and also a convenience for interactive use:
   // the types won't check but a string is always allowed at runtime.
-  if (typeof functionReference === "string") return functionReference;
+  if (typeof functionReference === "string")
+    return Either.right(functionReference);
 
   // Two different runtime values for FunctionReference implement this
   // interface: api objects returned from `createApi()` and standalone
   // function reference objects returned from makeFunctionReference.
   const name = (functionReference as any)[functionName];
   if (!name) {
-    throw new Error(`${functionReference as any} is not a functionReference`);
+    return Either.left(
+      new FunctionReferenceError({
+        message: `${functionReference as any} is not a functionReference`,
+      }),
+    );
   }
-  return name;
+  return Either.right(name);
 }
 
 /**
@@ -139,10 +161,10 @@ export function makeFunctionReference<
  * or functions are defined.
  *
  * @param pathParts - The path to the current node in the API.
- * @returns An {@link AnyApi}
+ * @returns An {@link Either} of the {@link AnyApi} or a {@link ApiPathError}.
  * @public
  */
-function createApi(pathParts: string[] = []): AnyApi {
+function createApi(pathParts: string[] = []): Either.Either<AnyApi, ApiPathError> {
   const handler: ProxyHandler<object> = {
     get(_, prop: string | symbol) {
       if (typeof prop === "string") {
@@ -151,26 +173,28 @@ function createApi(pathParts: string[] = []): AnyApi {
       } else if (prop === functionName) {
         if (pathParts.length < 2) {
           const found = ["api", ...pathParts].join(".");
-          throw new Error(
-            `API path is expected to be of the form \`api.moduleName.functionName\`. Found: \`${found}\``,
+          return Either.left(
+            new ApiPathError({
+              message: `API path is expected to be of the form \`api.moduleName.functionName\`. Found: \`${found}\``,
+            }),
           );
         }
         const path = pathParts.slice(0, -1).join("/");
         const exportName = pathParts[pathParts.length - 1];
         if (exportName === "default") {
-          return path;
+          return Either.right(path);
         } else {
-          return path + ":" + exportName;
+          return Either.right(path + ":" + exportName);
         }
       } else if (prop === Symbol.toStringTag) {
-        return "FunctionReference";
+        return Either.right("FunctionReference");
       } else {
-        return undefined;
+        return Either.right(undefined);
       }
     },
   };
 
-  return new Proxy({}, handler);
+  return Either.right(new Proxy({}, handler));
 }
 
 /**
@@ -183,35 +207,35 @@ export type FunctionReferenceFromExport<Export> =
     infer Args,
     infer ReturnValue
   >
-    ? FunctionReference<
-        "query",
-        Visibility,
-        Args,
-        ConvertReturnType<ReturnValue>
-      >
-    : Export extends RegisteredMutation<
-          infer Visibility,
-          infer Args,
-          infer ReturnValue
-        >
-      ? FunctionReference<
-          "mutation",
-          Visibility,
-          Args,
-          ConvertReturnType<ReturnValue>
-        >
-      : Export extends RegisteredAction<
-            infer Visibility,
-            infer Args,
-            infer ReturnValue
-          >
-        ? FunctionReference<
-            "action",
-            Visibility,
-            Args,
-            ConvertReturnType<ReturnValue>
-          >
-        : never;
+  ? FunctionReference<
+    "query",
+    Visibility,
+    Args,
+    ConvertReturnType<ReturnValue>
+  >
+  : Export extends RegisteredMutation<
+    infer Visibility,
+    infer Args,
+    infer ReturnValue
+  >
+  ? FunctionReference<
+    "mutation",
+    Visibility,
+    Args,
+    ConvertReturnType<ReturnValue>
+  >
+  : Export extends RegisteredAction<
+    infer Visibility,
+    infer Args,
+    infer ReturnValue
+  >
+  ? FunctionReference<
+    "action",
+    Visibility,
+    Args,
+    ConvertReturnType<ReturnValue>
+  >
+  : never;
 
 /**
  * Given a module, convert all the Convex functions into
@@ -224,8 +248,8 @@ export type FunctionReferenceFromExport<Export> =
  */
 type FunctionReferencesInModule<Module extends Record<string, any>> = {
   -readonly [ExportName in keyof Module as Module[ExportName]["isConvexFunction"] extends true
-    ? ExportName
-    : never]: FunctionReferenceFromExport<Module[ExportName]>;
+  ? ExportName
+  : never]: FunctionReferenceFromExport<Module[ExportName]>;
 };
 
 /**
@@ -238,8 +262,8 @@ type ApiForModule<
   Module extends object,
 > = ModulePath extends `${infer First}/${infer Second}`
   ? {
-      [_ in First]: ApiForModule<Second, Module>;
-    }
+    [_ in First]: ApiForModule<Second, Module>;
+  }
   : { [_ in ModulePath]: FunctionReferencesInModule<Module> };
 
 /**
@@ -278,14 +302,14 @@ type ApiFromModulesAllowEmptyNodes<AllModules extends Record<string, object>> =
  */
 export type FilterApi<API, Predicate> = Expand<{
   [mod in keyof API as API[mod] extends Predicate
-    ? mod
-    : API[mod] extends FunctionReference<any, any, any, any>
-      ? never
-      : FilterApi<API[mod], Predicate> extends Record<string, never>
-        ? never
-        : mod]: API[mod] extends Predicate
-    ? API[mod]
-    : FilterApi<API[mod], Predicate>;
+  ? mod
+  : API[mod] extends FunctionReference<any, any, any, any>
+  ? never
+  : FilterApi<API[mod], Predicate> extends Record<string, never>
+  ? never
+  : mod]: API[mod] extends Predicate
+  ? API[mod]
+  : FilterApi<API[mod], Predicate>;
 }>;
 
 /**
@@ -369,8 +393,8 @@ export function justSchedulable<API>(
 type ExpandModulesAndDirs<ObjectType> = ObjectType extends AnyFunctionReference
   ? ObjectType
   : {
-      [Key in keyof ObjectType]: ExpandModulesAndDirs<ObjectType[Key]>;
-    };
+    [Key in keyof ObjectType]: ExpandModulesAndDirs<ObjectType[Key]>;
+  };
 
 /**
  * A {@link FunctionReference} of any type and any visibility with any
@@ -400,8 +424,8 @@ export type AnyApi = Record<string, Record<string, AnyModuleDirOrFunc>>;
  */
 export type PartialApi<API> = {
   [mod in keyof API]?: API[mod] extends FunctionReference<any, any, any, any>
-    ? API[mod]
-    : PartialApi<API[mod]>;
+  ? API[mod]
+  : PartialApi<API[mod]>;
 };
 
 /**
@@ -445,8 +469,8 @@ export type FunctionArgs<FuncRef extends AnyFunctionReference> =
  */
 export type OptionalRestArgs<FuncRef extends AnyFunctionReference> =
   FuncRef["_args"] extends EmptyObject
-    ? [args?: EmptyObject]
-    : [args: FuncRef["_args"]];
+  ? [args?: EmptyObject]
+  : [args: FuncRef["_args"]];
 
 /**
  * A tuple type of the (maybe optional) arguments to `FuncRef`, followed by an options
@@ -486,5 +510,5 @@ type NullToUndefinedOrNull<T> = T extends null ? T | undefined | void : T;
 export type ConvertReturnType<T> = UndefinedToNull<Awaited<T>>;
 
 export type ValidatorTypeToReturnType<T> =
-  | Promise<NullToUndefinedOrNull<T>>
+  | Effect.Effect<NullToUndefinedOrNull<T>>
   | NullToUndefinedOrNull<T>;

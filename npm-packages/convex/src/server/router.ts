@@ -1,5 +1,38 @@
 import { performJsSyscall } from "./impl/syscall.js";
 import { PublicHttpAction } from "./registration.js";
+import * as Data from "effect/Data"
+import * as Either from "effect/Either"
+import * as Option from "effect/Option"
+import * as Effect from "effect/Effect"
+import { jsonStringify } from "./utils.js";
+import { ConvexError } from "../values/errors.js";
+
+class MissingHandler extends Data.TaggedError("MissingHandler")<{
+  message: string;
+}>{ }
+class MissingMethod extends Data.TaggedError("MissingMethod")<{
+  message: string;
+}>{ }
+class InvalidMethod extends Data.TaggedError("InvalidMethod")<{ method: string }>{ }
+class BothPathAndPrefix extends Data.TaggedError("BothPathAndPrefix")<{}>{ }
+class PathDoesNotStartWithSlash extends Data.TaggedError("PathDoesNotStartWithSlash")<{ path: string }>{ }
+class PrefixDoesNotStartWithSlash extends Data.TaggedError("PrefixDoesNotStartWithSlash")<{ prefix: string }>{ }
+class PrefixDoesNotEndWithSlash extends Data.TaggedError("PrefixDoesNotEndWithSlash")<{ prefix: string }>{ }
+class DuplicateRoute extends Data.TaggedError("DuplicateRoute")<{ path: string; method: string }>{ }
+class DuplicatePrefix extends Data.TaggedError("DuplicatePrefix")<{ prefix: string; method: string }>{ }
+
+type HttpRouterError =
+  | MissingHandler
+  | MissingMethod
+  | InvalidMethod
+  | BothPathAndPrefix
+  | PathDoesNotStartWithSlash
+  | PrefixDoesNotStartWithSlash
+  | PrefixDoesNotEndWithSlash
+  | DuplicateRoute
+  | DuplicatePrefix
+
+
 
 // Note: this list is duplicated in the dashboard.
 /**
@@ -158,60 +191,51 @@ export class HttpRouter {
    * http.route({ pathPrefix: "/profile/", method: "GET", handler: getProfile})
    * ```
    */
-  route = (spec: RouteSpec) => {
-    if (!spec.handler) throw new Error(`route requires handler`);
-    if (!spec.method) throw new Error(`route requires method`);
-    const { method, handler } = spec;
-    if (!ROUTABLE_HTTP_METHODS.includes(method)) {
-      throw new Error(
-        `'${method}' is not an allowed HTTP method (like GET, POST, PUT etc.)`,
-      );
-    }
+  route = (spec: RouteSpec): Either.Either<void, HttpRouterError> => Either.gen(this, function* () {
+    {
+      if (!spec.handler) yield* Either.left(new MissingHandler({ message: `route requires handler` }));
+      if (!spec.method) yield* Either.left(new MissingMethod({ message: `route requires method` }));
+      const { method, handler } = spec;
 
-    if ("path" in spec) {
-      if ("pathPrefix" in spec) {
-        throw new Error(
-          `Invalid httpRouter route: cannot contain both 'path' and 'pathPrefix'`,
-        );
+      if (!ROUTABLE_HTTP_METHODS.includes(method)) {
+        yield* Either.left(new InvalidMethod({ method }));
       }
-      if (!spec.path.startsWith("/")) {
-        throw new Error(`path '${spec.path}' does not start with a /`);
+
+      if ("path" in spec) {
+        if ("pathPrefix" in spec) {
+          yield* Either.left(new BothPathAndPrefix());
+        }
+        if (!spec.path.startsWith("/")) {
+          yield* Either.left(new PathDoesNotStartWithSlash({ path: spec.path }));
+        }
+        const methods: Map<RoutableMethod, PublicHttpAction> =
+          this.exactRoutes.has(spec.path)
+            ? this.exactRoutes.get(spec.path)!
+            : new Map();
+        if (methods.has(method)) {
+          yield* Either.left(new DuplicateRoute({ path: spec.path, method }));
+        }
+        methods.set(method, handler);
+        this.exactRoutes.set(spec.path, methods);
+      } else if ("pathPrefix" in spec) {
+        if (!spec.pathPrefix.startsWith("/")) {
+          yield* Either.left(new PrefixDoesNotStartWithSlash({ prefix: spec.pathPrefix }));
+        }
+        if (!spec.pathPrefix.endsWith("/")) {
+          yield* Either.left(new PrefixDoesNotEndWithSlash({ prefix: spec.pathPrefix }));
+        }
+        const prefixes =
+          this.prefixRoutes.get(method) || new Map<string, PublicHttpAction>();
+        if (prefixes.has(spec.pathPrefix)) {
+          yield* Either.left(new DuplicatePrefix({ prefix: spec.pathPrefix, method }));
+        }
+        prefixes.set(spec.pathPrefix, handler);
+        this.prefixRoutes.set(method, prefixes);
+      } else {
+        yield* Either.left(new BothPathAndPrefix());
       }
-      const methods: Map<RoutableMethod, PublicHttpAction> =
-        this.exactRoutes.has(spec.path)
-          ? this.exactRoutes.get(spec.path)!
-          : new Map();
-      if (methods.has(method)) {
-        throw new Error(
-          `Path '${spec.path}' for method ${method} already in use`,
-        );
-      }
-      methods.set(method, handler);
-      this.exactRoutes.set(spec.path, methods);
-    } else if ("pathPrefix" in spec) {
-      if (!spec.pathPrefix.startsWith("/")) {
-        throw new Error(
-          `pathPrefix '${spec.pathPrefix}' does not start with a /`,
-        );
-      }
-      if (!spec.pathPrefix.endsWith("/")) {
-        throw new Error(`pathPrefix ${spec.pathPrefix} must end with a /`);
-      }
-      const prefixes =
-        this.prefixRoutes.get(method) || new Map<string, PublicHttpAction>();
-      if (prefixes.has(spec.pathPrefix)) {
-        throw new Error(
-          `${spec.method} pathPrefix ${spec.pathPrefix} is already defined`,
-        );
-      }
-      prefixes.set(spec.pathPrefix, handler);
-      this.prefixRoutes.set(method, prefixes);
-    } else {
-      throw new Error(
-        `Invalid httpRouter route entry: must contain either field 'path' or 'pathPrefix'`,
-      );
     }
-  };
+  })
 
   /**
    * Returns a list of routed HTTP actions.
@@ -269,10 +293,10 @@ export class HttpRouter {
   lookup = (
     path: string,
     method: RoutableMethod | "HEAD",
-  ): Readonly<[PublicHttpAction, RoutableMethod, string]> | null => {
+  ): Option.Option<Readonly<[PublicHttpAction, RoutableMethod, string]>> => {
     method = normalizeMethod(method);
     const exactMatch = this.exactRoutes.get(path)?.get(method);
-    if (exactMatch) return [exactMatch, method, path];
+    if (exactMatch) return Option.some([exactMatch, method, path]);
 
     const prefixes = this.prefixRoutes.get(method) || new Map();
     const prefixesSorted = [...prefixes.entries()].sort(
@@ -280,10 +304,10 @@ export class HttpRouter {
     );
     for (const [pathPrefix, endpoint] of prefixesSorted) {
       if (path.startsWith(pathPrefix)) {
-        return [endpoint, method, `${pathPrefix}*`];
+        return Option.some([endpoint, method, `${pathPrefix}*`]);
       }
     }
-    return null;
+    return Option.none();
   };
 
   /**
@@ -295,33 +319,39 @@ export class HttpRouter {
    *
    * @returns - a Response object.
    */
-  runRequest = async (
+  runRequest = (
     argsStr: string,
     requestRoute: string,
-  ): Promise<string> => {
-    const request = performJsSyscall("requestFromConvexJson", {
-      convexJson: JSON.parse(argsStr),
-    });
-
-    let pathname = requestRoute;
-    if (!pathname || typeof pathname !== "string") {
-      pathname = new URL(request.url).pathname;
-    }
-
-    const method = request.method;
-    const match = this.lookup(pathname, method as RoutableMethod);
-    if (!match) {
-      const response = new Response(`No HttpAction routed for ${pathname}`, {
-        status: 404,
+  ): Effect.Effect<string, ConvexError<string>, any> => {
+    return Effect.gen(this, function* () {
+      const request = yield* performJsSyscall("requestFromConvexJson", {
+        convexJson: JSON.parse(argsStr),
       });
-      return JSON.stringify(
-        performJsSyscall("convexJsonFromResponse", { response }),
-      );
-    }
-    const [endpoint, _method, _path] = match;
-    const response = await endpoint.invokeHttpAction(request);
-    return JSON.stringify(
-      performJsSyscall("convexJsonFromResponse", { response }),
-    );
+
+      let pathname = requestRoute;
+      if (!pathname || typeof pathname !== "string") {
+        pathname = new URL(request.url).pathname;
+      }
+
+      const method = request.method;
+      return yield* Option.match(this.lookup(pathname, method as RoutableMethod), {
+        onNone: () => {
+          const response = new Response(`No HttpAction routed for ${pathname}`, {
+            status: 404,
+          });
+          return performJsSyscall("convexJsonFromResponse", { response });
+        },
+        onSome: ([endpoint, _method, _path]) => endpoint.invokeHttpAction(request).pipe(
+          (response) => performJsSyscall("convexJsonFromResponse", { response }),
+          jsonStringify
+        )
+      })
+    }).pipe(
+      Effect.catchAll((e) => {
+        return new ConvexError({
+          data: e._tag === "ConvexError" ? e.data : e.message
+        })
+      })
+    )
   };
 }

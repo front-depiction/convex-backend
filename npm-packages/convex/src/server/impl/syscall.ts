@@ -1,10 +1,16 @@
-import { ConvexError } from "../../values/errors.js";
-import { jsonToConvex } from "../../values/value.js";
+import { Value, jsonToConvex } from "../../values/value.js";
+import * as Effect from "effect/Effect"
+import * as Either from "effect/Either"
+import { UnknownException } from "effect/Cause";
+import { ConvexError, JSONError } from "../../values/errors.js";
+import { jsonParse } from "../utils.js";
+
+
 
 declare const Convex: {
-  syscall: (op: string, jsonArgs: string) => string;
-  asyncSyscall: (op: string, jsonArgs: string) => Promise<string>;
-  jsSyscall: (op: string, args: Record<string, any>) => any;
+  syscall: (op: string, jsonArgs: string) => Effect.Effect<string, ConvexError<any> | UnknownException>;
+  asyncSyscall: (op: string, jsonArgs: string) => Effect.Effect<string, ConvexError<any> | UnknownException>;
+  jsSyscall: (op: string, args: Record<string, any>) => Effect.Effect<any, ConvexError<any> | UnknownException>;
 };
 /**
  * Perform a syscall, taking in a JSON-encodable object as an argument, serializing with
@@ -14,44 +20,62 @@ declare const Convex: {
  * also responsible for calling `jsonToConvex`: This layer only deals in JSON.
  */
 
-export function performSyscall(op: string, arg: Record<string, any>): any {
-  if (typeof Convex === "undefined" || Convex.syscall === undefined) {
-    throw new Error(
-      "The Convex database and auth objects are being used outside of a Convex backend. " +
-        "Did you mean to use `useQuery` or `useMutation` to call a Convex function?",
-    );
-  }
-  const resultStr = Convex.syscall(op, JSON.stringify(arg));
-  return JSON.parse(resultStr);
+export function performSyscall(op: string, arg: Record<string, any>): Effect.Effect<any, ConvexError<string> | JSONError> {
+  return Effect.gen(function* () {
+    if (typeof Convex === "undefined" || Convex.syscall === undefined) {
+      return yield* new ConvexError({
+        data: "The Convex database and auth objects are being used outside of a Convex backend. " +
+          "Did you mean to use `useQuery` or `useMutation` to call a Convex function?"
+      })
+    }
+    const resultStr = yield* Convex.syscall(op, JSON.stringify(arg)).pipe(
+      Effect.catchTag("UnknownException", (e) => {
+        return new ConvexError({
+          data: "An unknown error occurred while performing a syscall" + String(e)
+        })
+      })
+    )
+    return yield* jsonParse(resultStr)
+  })
+
 }
 
-export async function performAsyncSyscall(
+export function performAsyncSyscall(
   op: string,
   arg: Record<string, any>,
-): Promise<any> {
-  if (typeof Convex === "undefined" || Convex.asyncSyscall === undefined) {
-    throw new Error(
-      "The Convex database and auth objects are being used outside of a Convex backend. " +
-        "Did you mean to use `useQuery` or `useMutation` to call a Convex function?",
-    );
-  }
-  let resultStr;
-  try {
-    resultStr = await Convex.asyncSyscall(op, JSON.stringify(arg));
-  } catch (e: any) {
-    // Rethrow the exception to attach stack trace starting from here.
-    // If the error came from JS it will include its own stack trace in the message.
-    // If it came from Rust it won't.
-
-    // This only happens if we're propagating ConvexErrors
-    if (e.data !== undefined) {
-      const rethrown = new ConvexError(e.message);
-      rethrown.data = jsonToConvex(e.data);
-      throw rethrown;
+): Effect.Effect<any, ConvexError<string | Value> | JSONError> {
+  return Effect.gen(function* () {
+    if (typeof Convex === "undefined" || Convex.asyncSyscall === undefined) {
+      return yield* new ConvexError({
+        data: "The Convex database and auth objects are being used outside of a Convex backend. " +
+          "Did you mean to use `useQuery` or `useMutation` to call a Convex function?",
+      })
     }
-    throw new Error(e.message);
-  }
-  return JSON.parse(resultStr);
+    let resultStr = yield* Convex.asyncSyscall(op, JSON.stringify(arg)).pipe(
+      Effect.catchTags({
+        ConvexError: (e) => {
+          return jsonToConvex(e.data).pipe(
+            Either.mapBoth({
+              onLeft: (e) => new ConvexError({
+                data: e.message
+              }),
+              onRight: (value) => new ConvexError({
+                data: value
+              })
+            }),
+            Either.flatMap(Either.left)
+          )
+        },
+        UnknownException: (e) => {
+          return new ConvexError({
+            data: "An unknown error occurred while performing an async syscall" + String(e)
+          })
+        }
+      })
+    )
+    return yield* jsonParse(resultStr)
+  })
+
 }
 
 /**
@@ -63,12 +87,20 @@ export async function performAsyncSyscall(
  * @param arg
  * @returns
  */
-export function performJsSyscall(op: string, arg: Record<string, any>): any {
-  if (typeof Convex === "undefined" || Convex.jsSyscall === undefined) {
-    throw new Error(
-      "The Convex database and auth objects are being used outside of a Convex backend. " +
-        "Did you mean to use `useQuery` or `useMutation` to call a Convex function?",
-    );
-  }
-  return Convex.jsSyscall(op, arg);
+export function performJsSyscall(op: string, arg: Record<string, any>): Effect.Effect<any, ConvexError<string>> {
+  return Effect.gen(function* () {
+    if (typeof Convex === "undefined" || Convex.jsSyscall === undefined) {
+      return yield* new ConvexError({
+        data: "The Convex database and auth objects are being used outside of a Convex backend. " +
+          "Did you mean to use `useQuery` or `useMutation` to call a Convex function?",
+      })
+    }
+    return yield* Convex.jsSyscall(op, arg).pipe(
+      Effect.catchTag("UnknownException", (e) => {
+        return new ConvexError({
+          data: "An unknown error occurred while performing a js syscall" + String(e)
+        })
+      })
+    )
+  })
 }

@@ -1,4 +1,6 @@
 import { GenericId } from "../values/index.js";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 /**
  * A reference to a file in storage.
@@ -31,7 +33,7 @@ export type FileMetadata = {
   /**
    * ContentType of the file if it was provided on upload
    */
-  contentType: string | null;
+  contentType: Option.Option<string>;
 };
 
 /**
@@ -48,7 +50,7 @@ export interface StorageReader {
    * @param storageId - The `Id<"_storage">` of the file to fetch from Convex storage.
    * @returns - A url which fetches the file via an HTTP GET, or `null` if it no longer exists.
    */
-  getUrl(storageId: GenericId<"_storage">): Promise<string | null>;
+  getUrl(storageId: GenericId<"_storage">): Effect.Effect<Option.Option<string>>;
 
   /**
    * @deprecated Passing a string is deprecated, use `storage.getUrl(Id<"_storage">)` instead.
@@ -62,7 +64,7 @@ export interface StorageReader {
    */
   getUrl<T extends StorageId>(
     storageId: T extends { __tableName: any } ? never : T,
-  ): Promise<string | null>;
+  ): Effect.Effect<Option.Option<string>>;
 
   /**
    * @deprecated This function is deprecated, use `db.system.get(Id<"_storage">)` instead.
@@ -72,7 +74,7 @@ export interface StorageReader {
    * @param storageId - The `Id<"_storage">` of the file.
    * @returns - A {@link FileMetadata} object if found or `null` if not found.
    */
-  getMetadata(storageId: GenericId<"_storage">): Promise<FileMetadata | null>;
+  getMetadata(storageId: GenericId<"_storage">): Effect.Effect<Option.Option<FileMetadata>>;
 
   /**
    * @deprecated This function is deprecated, use `db.system.get(Id<"_storage">)` instead.
@@ -84,7 +86,7 @@ export interface StorageReader {
    */
   getMetadata<T extends StorageId>(
     storageId: T extends { __tableName: any } ? never : T,
-  ): Promise<FileMetadata | null>;
+  ): Effect.Effect<Option.Option<FileMetadata>>;
 }
 
 /**
@@ -102,7 +104,7 @@ export interface StorageWriter extends StorageReader {
    *
    * @returns - A url that allows file upload via an HTTP POST.
    */
-  generateUploadUrl(): Promise<string>;
+  generateUploadUrl(): Effect.Effect<string>;
   /**
    * Delete a file from Convex storage.
    *
@@ -110,7 +112,7 @@ export interface StorageWriter extends StorageReader {
    *
    * @param storageId - The `Id<"_storage">` of the file to delete from Convex storage.
    */
-  delete(storageId: GenericId<"_storage">): Promise<void>;
+  delete(storageId: GenericId<"_storage">): Effect.Effect<void>;
 
   /**
    * @deprecated Passing a string is deprecated, use `storage.delete(Id<"_storage">)` instead.
@@ -123,7 +125,7 @@ export interface StorageWriter extends StorageReader {
    */
   delete<T extends StorageId>(
     storageId: T extends { __tableName: any } ? never : T,
-  ): Promise<void>;
+  ): Effect.Effect<void>;
 }
 
 /**
@@ -135,7 +137,7 @@ export interface StorageActionWriter extends StorageWriter {
   /**
    * Get a Blob containing the file associated with the provided `Id<"_storage">`, or `null` if there is no file.
    */
-  get(storageId: GenericId<"_storage">): Promise<Blob | null>;
+  get(storageId: GenericId<"_storage">): Effect.Effect<Option.Option<Blob>>;
 
   /**
    * @deprecated Passing a string is deprecated, use `storage.get(Id<"_storage">)` instead.
@@ -144,14 +146,11 @@ export interface StorageActionWriter extends StorageWriter {
    */
   get<T extends StorageId>(
     storageId: T extends { __tableName: any } ? never : T,
-  ): Promise<Blob | null>;
+  ): Effect.Effect<Option.Option<Blob>>;
   /**
    * Store the file contained in the Blob.
    *
    * If provided, this will verify the sha256 checksum matches the contents of the file.
    */
-  store(
-    blob: Blob,
-    options?: { sha256?: string },
-  ): Promise<GenericId<"_storage">>;
+  store(blob: Blob, options?: { sha256?: string }): Effect.Effect<GenericId<"_storage">>;
 }

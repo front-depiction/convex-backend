@@ -233,6 +233,8 @@
     "CLI tool dependencies are listed in devDependencies instead."
   ],
   "dependencies": {
+    "@effect/language-service": "^0.23.5",
+    "effect": "^3.16.12",
     "esbuild": "0.25.4",
     "jwt-decode": "^4.0.0",
     "prettier": "3.5.3"

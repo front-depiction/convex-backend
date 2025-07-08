@@ -11,6 +11,7 @@ import {
   TableNamesInDataModel,
   VectorIndexNames,
 } from "./data_model.js";
+import * as Effect from "effect/Effect";
 
 /**
  * An object with parameters for performing a vector search against a vector index.
@@ -60,7 +61,7 @@ export type VectorSearch<
   tableName: TableName,
   indexName: IndexName,
   query: VectorSearchQuery<NamedTableInfo<DataModel, TableName>, IndexName>,
-) => Promise<Array<{ _id: Id<TableName>; _score: number }>>;
+) => Effect.Effect<Array<{ _id: Id<TableName>; _score: number }>>;
 
 /**
  * Expressions are evaluated to produce a {@link values.Value} in the course of executing a query.

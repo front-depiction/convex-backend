@@ -1,5 +1,8 @@
 {
-  "include": ["src", ".eslintrc.cjs"],
+  "include": [
+    "src",
+    ".eslintrc.cjs"
+  ],
   "compileOnSave": true,
   "compilerOptions": {
     /* Basic Options */
@@ -21,6 +24,11 @@
     /* Advanced Options */
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "jsx": "react"
-  }
+    "jsx": "react",
+    "plugins": [
+      {
+        "name": "@effect/language-service"
+      }
+    ]
+  },
 }

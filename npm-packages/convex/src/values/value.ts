@@ -6,7 +6,18 @@
  * @module
  */
 import * as Base64 from "./base64.js";
+import * as Data from "effect/Data"
 import { isSimpleObject } from "../common/index.js";
+import * as Either from "effect/Either"
+import { jsonStringify } from "../server/utils.js";
+import { JSONError } from "./errors.js";
+export class ConvexToJsonError extends Data.TaggedError("ConvexToJsonError")<{
+  message: string;
+}> { }
+
+export class ObjectFieldValidationError extends Data.TaggedError("ObjectFieldValidationError")<{
+  message: string;
+}> { }
 
 const LITTLE_ENDIAN = true;
 // This code is used by code that may not have bigint literals.
@@ -152,24 +163,25 @@ export const base64ToBigInt = (DataView.prototype as any).getBigInt64
 
 const MAX_IDENTIFIER_LEN = 1024;
 
-function validateObjectField(k: string) {
-  if (k.length > MAX_IDENTIFIER_LEN) {
-    throw new Error(
-      `Field name ${k} exceeds maximum field name length ${MAX_IDENTIFIER_LEN}.`,
-    );
-  }
-  if (k.startsWith("$")) {
-    throw new Error(`Field name ${k} starts with a '$', which is reserved.`);
-  }
-  for (let i = 0; i < k.length; i += 1) {
-    const charCode = k.charCodeAt(i);
-    // Non-control ASCII characters
-    if (charCode < 32 || charCode >= 127) {
-      throw new Error(
-        `Field name ${k} has invalid character '${k[i]}': Field names can only contain non-control ASCII characters`,
-      );
+
+
+function validateObjectField(k: string): Either.Either<void, ObjectFieldValidationError> {
+  return Either.gen(function* () {
+    if (k.length > MAX_IDENTIFIER_LEN) {
+      return yield* Either.left(new ObjectFieldValidationError({ message: `Field name ${k} exceeds maximum field name length ${MAX_IDENTIFIER_LEN}.` }));
     }
-  }
+    if (k.startsWith("$")) {
+      return yield* Either.left(new ObjectFieldValidationError({ message: `Field name ${k} starts with a '$', which is reserved.` }));
+    }
+    for (let i = 0; i < k.length; i += 1) {
+      const charCode = k.charCodeAt(i);
+      // Non-control ASCII characters
+      if (charCode < 32 || charCode >= 127) {
+        return yield* Either.left(new ObjectFieldValidationError({ message: `Field name ${k} has invalid character '${k[i]}': Field names can only contain non-control ASCII characters` }));
+      }
+    }
+  })
+
 }
 
 /**
@@ -184,78 +196,75 @@ function validateObjectField(k: string) {
  *
  * @public
  */
-export function jsonToConvex(value: JSONValue): Value {
-  if (value === null) {
-    return value;
-  }
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "number") {
-    return value;
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((value) => jsonToConvex(value));
-  }
-  if (typeof value !== "object") {
-    throw new Error(`Unexpected type of ${value as any}`);
-  }
-  const entries = Object.entries(value);
-  if (entries.length === 1) {
-    const key = entries[0][0];
-    if (key === "$bytes") {
-      if (typeof value.$bytes !== "string") {
-        throw new Error(`Malformed $bytes field on ${value as any}`);
-      }
-      return Base64.toByteArray(value.$bytes).buffer;
+export function jsonToConvex(value: JSONValue): Either.Either<Value, ConvexToJsonError | ObjectFieldValidationError> {
+  return Either.gen(function* () {
+    if (value === null) {
+      return value;
     }
-    if (key === "$integer") {
-      if (typeof value.$integer !== "string") {
-        throw new Error(`Malformed $integer field on ${value as any}`);
-      }
-      return base64ToBigInt(value.$integer);
+    if (typeof value === "boolean") {
+      return value;
     }
-    if (key === "$float") {
-      if (typeof value.$float !== "string") {
-        throw new Error(`Malformed $float field on ${value as any}`);
-      }
-      const floatBytes = Base64.toByteArray(value.$float);
-      if (floatBytes.byteLength !== 8) {
-        throw new Error(
-          `Received ${floatBytes.byteLength} bytes, expected 8 for $float`,
-        );
-      }
-      const floatBytesView = new DataView(floatBytes.buffer);
-      const float = floatBytesView.getFloat64(0, LITTLE_ENDIAN);
-      if (!isSpecial(float)) {
-        throw new Error(`Float ${float} should be encoded as a number`);
-      }
-      return float;
+    if (typeof value === "number") {
+      return value;
     }
-    if (key === "$set") {
-      throw new Error(
-        `Received a Set which is no longer supported as a Convex type.`,
-      );
+    if (typeof value === "string") {
+      return value;
     }
-    if (key === "$map") {
-      throw new Error(
-        `Received a Map which is no longer supported as a Convex type.`,
-      );
+    if (Array.isArray(value)) {
+      return value.map((value) => yield* jsonToConvex(value));
     }
-  }
-  const out: { [key: string]: Value } = {};
-  for (const [k, v] of Object.entries(value)) {
-    validateObjectField(k);
-    out[k] = jsonToConvex(v);
-  }
-  return out;
+    if (typeof value !== "object") {
+      return yield* Either.left(new ConvexToJsonError({ message: `Unexpected type of ${value as any}` }));
+    }
+    const entries = Object.entries(value);
+    if (entries.length === 1) {
+      const key = entries[0][0];
+      if (key === "$bytes") {
+        if (typeof value.$bytes !== "string") {
+          return yield* Either.left(new ConvexToJsonError({ message: `Malformed $bytes field on ${value as any}` }));
+        }
+        return Base64.toByteArray(value.$bytes).buffer;
+      }
+      if (key === "$integer") {
+        if (typeof value.$integer !== "string") {
+          return yield* Either.left(new ConvexToJsonError({ message: `Malformed $integer field on ${value as any}` }));
+        }
+        return base64ToBigInt(value.$integer);
+      }
+      if (key === "$float") {
+        if (typeof value.$float !== "string") {
+          return yield* Either.left(new ConvexToJsonError({ message: `Malformed $float field on ${value as any}` }));
+        }
+        const floatBytes = Base64.toByteArray(value.$float);
+        if (floatBytes.byteLength !== 8) {
+          return yield* Either.left(new ConvexToJsonError({ message: `Received ${floatBytes.byteLength} bytes, expected 8 for $float` }));
+        }
+        const floatBytesView = new DataView(floatBytes.buffer);
+        const float = floatBytesView.getFloat64(0, LITTLE_ENDIAN);
+        if (!isSpecial(float)) {
+          return yield* Either.left(new ConvexToJsonError({ message: `Float ${float} should be encoded as a number` }));
+        }
+        return float;
+      }
+      if (key === "$set") {
+        return yield* Either.left(new ConvexToJsonError({ message: `Received a Set which is no longer supported as a Convex type.` }));
+      }
+      if (key === "$map") {
+        return yield* Either.left(new ConvexToJsonError({ message: `Received a Map which is no longer supported as a Convex type.` }));
+      }
+    }
+    const out: { [key: string]: Value } = {};
+    for (const [k, v] of Object.entries(value)) {
+      yield* validateObjectField(k);
+      out[k] = yield* jsonToConvex(v);
+    }
+    return out;
+  })
+
 }
 
 export function stringifyValueForError(value: any) {
-  return JSON.stringify(value, (_key, value) => {
+  return jsonStringify(value, (_key, value) => {
     if (value === undefined) {
       // By default `JSON.stringify` converts undefined, functions, symbols,
       // Infinity, and NaN to null which produces a confusing error message.
@@ -277,87 +286,79 @@ function convexToJsonInternal(
   originalValue: Value,
   context: string,
   includeTopLevelUndefined: boolean,
-): JSONValue {
-  if (value === undefined) {
-    const contextText =
-      context &&
-      ` (present at path ${context} in original object ${stringifyValueForError(
-        originalValue,
-      )})`;
-    throw new Error(
-      `undefined is not a valid Convex value${contextText}. To learn about Convex's supported types, see https://docs.convex.dev/using/types.`,
-    );
-  }
-  if (value === null) {
-    return value;
-  }
-  if (typeof value === "bigint") {
-    if (value < MIN_INT64 || MAX_INT64 < value) {
-      throw new Error(
-        `BigInt ${value} does not fit into a 64-bit signed integer.`,
-      );
+): Either.Either<JSONValue, ConvexToJsonError | ObjectFieldValidationError | JSONError> {
+  return Either.gen(function* () {
+    if (value === undefined) {
+      const contextText =
+        context &&
+        ` (present at path ${context} in original object ${yield* stringifyValueForError(
+          originalValue,
+        )})`;
+      return yield* Either.left(new ConvexToJsonError({ message: `undefined is not a valid Convex value${contextText}. To learn about Convex's supported types, see https://docs.convex.dev/using/types.` }));
     }
-    return { $integer: bigIntToBase64(value) };
-  }
-  if (typeof value === "number") {
-    if (isSpecial(value)) {
-      const buffer = new ArrayBuffer(8);
-      new DataView(buffer).setFloat64(0, value, LITTLE_ENDIAN);
-      return { $float: Base64.fromByteArray(new Uint8Array(buffer)) };
-    } else {
+    if (value === null) {
       return value;
     }
-  }
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  if (value instanceof ArrayBuffer) {
-    return { $bytes: Base64.fromByteArray(new Uint8Array(value)) };
-  }
-  if (Array.isArray(value)) {
-    return value.map((value, i) =>
-      convexToJsonInternal(value, originalValue, context + `[${i}]`, false),
-    );
-  }
-  if (value instanceof Set) {
-    throw new Error(
-      errorMessageForUnsupportedType(context, "Set", [...value], originalValue),
-    );
-  }
-  if (value instanceof Map) {
-    throw new Error(
-      errorMessageForUnsupportedType(context, "Map", [...value], originalValue),
-    );
-  }
-
-  if (!isSimpleObject(value)) {
-    const theType = value?.constructor?.name;
-    const typeName = theType ? `${theType} ` : "";
-    throw new Error(
-      errorMessageForUnsupportedType(context, typeName, value, originalValue),
-    );
-  }
-
-  const out: { [key: string]: JSONValue } = {};
-  const entries = Object.entries(value);
-  entries.sort(([k1, _v1], [k2, _v2]) => (k1 === k2 ? 0 : k1 < k2 ? -1 : 1));
-  for (const [k, v] of entries) {
-    if (v !== undefined) {
-      validateObjectField(k);
-      out[k] = convexToJsonInternal(v, originalValue, context + `.${k}`, false);
-    } else if (includeTopLevelUndefined) {
-      validateObjectField(k);
-      out[k] = convexOrUndefinedToJsonInternal(
-        v,
-        originalValue,
-        context + `.${k}`,
+    if (typeof value === "bigint") {
+      if (value < MIN_INT64 || MAX_INT64 < value) {
+        return yield* Either.left(new ConvexToJsonError({ message: `BigInt ${value} does not fit into a 64-bit signed integer.` }));
+      }
+      return { $integer: bigIntToBase64(value) };
+    }
+    if (typeof value === "number") {
+      if (isSpecial(value)) {
+        const buffer = new ArrayBuffer(8);
+        new DataView(buffer).setFloat64(0, value, LITTLE_ENDIAN);
+        return { $float: Base64.fromByteArray(new Uint8Array(buffer)) };
+      } else {
+        return value;
+      }
+    }
+    if (typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "string") {
+      return value;
+    }
+    if (value instanceof ArrayBuffer) {
+      return { $bytes: Base64.fromByteArray(new Uint8Array(value)) };
+    }
+    if (Array.isArray(value)) {
+      return value.map((value, i) =>
+        yield* convexToJsonInternal(value, originalValue, context + `[${i}]`, false),
       );
     }
-  }
-  return out;
+    if (value instanceof Set) {
+      return yield* Either.left(new ConvexToJsonError({ message: yield* errorMessageForUnsupportedType(context, "Set", [...value], originalValue) }));
+    }
+    if (value instanceof Map) {
+      return yield* Either.left(new ConvexToJsonError({ message: yield* errorMessageForUnsupportedType(context, "Map", [...value], originalValue) }));
+    }
+
+    if (!isSimpleObject(value)) {
+      const theType = value?.constructor?.name;
+      const typeName = theType ? `${theType} ` : "";
+      return yield* Either.left(new ConvexToJsonError({ message: yield* errorMessageForUnsupportedType(context, typeName, value, originalValue) }));
+    }
+
+    const out: { [key: string]: JSONValue } = {};
+    const entries = Object.entries(value);
+    entries.sort(([k1, _v1], [k2, _v2]) => (k1 === k2 ? 0 : k1 < k2 ? -1 : 1));
+    for (const [k, v] of entries) {
+      if (v !== undefined) {
+        yield* validateObjectField(k);
+        out[k] = yield* convexToJsonInternal(v, originalValue, context + `.${k}`, false);
+      } else if (includeTopLevelUndefined) {
+        yield* validateObjectField(k);
+        out[k] = yield* convexOrUndefinedToJsonInternal(
+          v,
+          originalValue,
+          context + `.${k}`,
+        );
+      }
+    }
+    return out;
+  })
 }
 
 function errorMessageForUnsupportedType(
@@ -365,18 +366,20 @@ function errorMessageForUnsupportedType(
   typeName: string,
   value: any,
   originalValue: any,
-) {
-  if (context) {
-    return `${typeName}${stringifyValueForError(
-      value,
-    )} is not a supported Convex type (present at path ${context} in original object ${stringifyValueForError(
-      originalValue,
-    )}). To learn about Convex's supported types, see https://docs.convex.dev/using/types.`;
-  } else {
-    return `${typeName}${stringifyValueForError(
-      value,
-    )} is not a supported Convex type.`;
-  }
+): Either.Either<string, JSONError> {
+  return Either.gen(function* () {
+    if (context) {
+      return `${typeName}${yield* stringifyValueForError(
+        value,
+      )} is not a supported Convex type (present at path ${context} in original object ${yield* stringifyValueForError(
+        originalValue,
+      )}). To learn about Convex's supported types, see https://docs.convex.dev/using/types.`;
+    } else {
+      return `${typeName}${yield* stringifyValueForError(
+        value,
+      )} is not a supported Convex type.`;
+    }
+  })
 }
 
 // convexOrUndefinedToJsonInternal wrapper exists so we can pipe through the
@@ -385,20 +388,19 @@ function convexOrUndefinedToJsonInternal(
   value: Value | undefined,
   originalValue: Value | undefined,
   context: string,
-): JSONValue {
-  if (value === undefined) {
-    return { $undefined: null };
-  } else {
-    if (originalValue === undefined) {
-      // This should not happen.
-      throw new Error(
-        `Programming error. Current value is ${stringifyValueForError(
-          value,
-        )} but original value is undefined`,
-      );
+): Either.Either<JSONValue, ConvexToJsonError | ObjectFieldValidationError | JSONError> {
+  return Either.gen(function* () {
+    if (value === undefined) {
+      return { $undefined: null };
+    } else {
+      if (originalValue === undefined) {
+        // This should not happen.
+        return yield* Either.left(new ConvexToJsonError({ message: `Programming error. Current value is ${yield* stringifyValueForError(value)} but original value is undefined` }));
+      }
+      return yield* convexToJsonInternal(value, originalValue, context, false);
     }
-    return convexToJsonInternal(value, originalValue, context, false);
-  }
+  })
+
 }
 
 /**
@@ -413,14 +415,18 @@ function convexOrUndefinedToJsonInternal(
  *
  * @public
  */
-export function convexToJson(value: Value): JSONValue {
-  return convexToJsonInternal(value, value, "", false);
+export function convexToJson(value: Value): Either.Either<JSONValue, ConvexToJsonError | ObjectFieldValidationError | JSONError> {
+  return convexToJsonInternal(value, value, "", false).pipe(
+    Either.mapLeft((e) => new ConvexToJsonError({ message: e.message }))
+  )
 }
 
 // Convert a Convex value or `undefined` into its JSON representation.
 // `undefined` is used in filters to represent a missing object field.
-export function convexOrUndefinedToJson(value: Value | undefined): JSONValue {
-  return convexOrUndefinedToJsonInternal(value, value, "");
+export function convexOrUndefinedToJson(value: Value | undefined): Either.Either<JSONValue, ConvexToJsonError | ObjectFieldValidationError | JSONError> {
+  return convexOrUndefinedToJsonInternal(value, value, "").pipe(
+    Either.mapLeft((e) => new ConvexToJsonError({ message: e.message }))
+  )
 }
 
 /**
@@ -430,6 +436,8 @@ export function convexOrUndefinedToJson(value: Value | undefined): JSONValue {
  * @param value - A Convex value to convert into JSON.
  * @returns The JSON representation of `value`.
  */
-export function patchValueToJson(value: Value): JSONValue {
-  return convexToJsonInternal(value, value, "", true);
+export function patchValueToJson(value: Value): Either.Either<JSONValue, ConvexToJsonError | ObjectFieldValidationError | JSONError> {
+  return convexToJsonInternal(value, value, "", true).pipe(
+    Either.mapLeft((e) => new ConvexToJsonError({ message: e.message }))
+  )
 }

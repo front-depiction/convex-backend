@@ -11,6 +11,8 @@ import {
   WithOptionalSystemFields,
   WithoutSystemFields,
 } from "./system_fields.js";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 interface BaseDatabaseReader<DataModel extends GenericDataModel> {
   /**
@@ -25,7 +27,7 @@ interface BaseDatabaseReader<DataModel extends GenericDataModel> {
   get<TableName extends TableNamesInDataModel<DataModel>>(
     table: NonUnion<TableName>,
     id: GenericId<TableName>,
-  ): Promise<DocumentByName<DataModel, TableName> | null>;
+  ): Effect.Effect<Option.Option<DocumentByName<DataModel, TableName>>>;
 
   /**
    * Fetch a single document from the database by its {@link values.GenericId}.
@@ -35,7 +37,7 @@ interface BaseDatabaseReader<DataModel extends GenericDataModel> {
    */
   get<TableName extends TableNamesInDataModel<DataModel>>(
     id: GenericId<TableName>,
-  ): Promise<DocumentByName<DataModel, TableName> | null>;
+  ): Effect.Effect<Option.Option<DocumentByName<DataModel, TableName>>>;
 
   /**
    * Begin a query for the given table name.
@@ -65,7 +67,7 @@ interface BaseDatabaseReader<DataModel extends GenericDataModel> {
   normalizeId<TableName extends TableNamesInDataModel<DataModel>>(
     tableName: TableName,
     id: string,
-  ): GenericId<TableName> | null;
+  ): Option.Option<GenericId<TableName>>;
 }
 
 interface BaseDatabaseReaderWithTable<DataModel extends GenericDataModel> {
@@ -89,7 +91,7 @@ export interface BaseTableReader<
    */
   get(
     id: GenericId<TableName>,
-  ): Promise<DocumentByName<DataModel, TableName> | null>;
+  ): Effect.Effect<Option.Option<DocumentByName<DataModel, TableName>>>;
 
   /**
    * Begin a query for the table.
@@ -172,7 +174,7 @@ export interface GenericDatabaseWriter<DataModel extends GenericDataModel>
   insert<TableName extends TableNamesInDataModel<DataModel>>(
     table: TableName,
     value: WithoutSystemFields<DocumentByName<DataModel, TableName>>,
-  ): Promise<GenericId<TableName>>;
+  ): Effect.Effect<GenericId<TableName>>;
 
   /**
    * Patch an existing document, shallow merging it with the given partial
@@ -192,7 +194,7 @@ export interface GenericDatabaseWriter<DataModel extends GenericDataModel>
     table: NonUnion<TableName>,
     id: GenericId<TableName>,
     value: Partial<DocumentByName<DataModel, TableName>>,
-  ): Promise<void>;
+  ): Effect.Effect<void>;
 
   /**
    * Patch an existing document, shallow merging it with the given partial
@@ -208,7 +210,7 @@ export interface GenericDatabaseWriter<DataModel extends GenericDataModel>
   patch<TableName extends TableNamesInDataModel<DataModel>>(
     id: GenericId<TableName>,
     value: Partial<DocumentByName<DataModel, TableName>>,
-  ): Promise<void>;
+  ): Effect.Effect<void>;
 
   /**
    * Replace the value of an existing document, overwriting its old value.
@@ -224,7 +226,7 @@ export interface GenericDatabaseWriter<DataModel extends GenericDataModel>
     table: NonUnion<TableName>,
     id: GenericId<TableName>,
     value: WithOptionalSystemFields<DocumentByName<DataModel, TableName>>,
-  ): Promise<void>;
+  ): Effect.Effect<void>;
 
   /**
    * Replace the value of an existing document, overwriting its old value.
@@ -236,7 +238,7 @@ export interface GenericDatabaseWriter<DataModel extends GenericDataModel>
   replace<TableName extends TableNamesInDataModel<DataModel>>(
     id: GenericId<TableName>,
     value: WithOptionalSystemFields<DocumentByName<DataModel, TableName>>,
-  ): Promise<void>;
+  ): Effect.Effect<void>;
 
   /**
    * Delete an existing document.
@@ -249,14 +251,14 @@ export interface GenericDatabaseWriter<DataModel extends GenericDataModel>
   delete<TableName extends TableNamesInDataModel<DataModel>>(
     table: NonUnion<TableName>,
     id: GenericId<TableName>,
-  ): Promise<void>;
+  ): Effect.Effect<void>;
 
   /**
    * Delete an existing document.
    *
    * @param id - The {@link values.GenericId} of the document to remove.
    */
-  delete(id: GenericId<TableNamesInDataModel<DataModel>>): Promise<void>;
+  delete(id: GenericId<TableNamesInDataModel<DataModel>>): Effect.Effect<void>;
 }
 
 /**
@@ -296,7 +298,7 @@ export interface BaseTableWriter<
    */
   insert(
     value: WithoutSystemFields<DocumentByName<DataModel, TableName>>,
-  ): Promise<GenericId<TableName>>;
+  ): Effect.Effect<GenericId<TableName>>;
 
   /**
    * Patch an existing document, shallow merging it with the given partial
@@ -312,7 +314,7 @@ export interface BaseTableWriter<
   patch(
     id: GenericId<TableName>,
     value: Partial<DocumentByName<DataModel, TableName>>,
-  ): Promise<void>;
+  ): Effect.Effect<void>;
 
   /**
    * Replace the value of an existing document, overwriting its old value.
@@ -324,14 +326,14 @@ export interface BaseTableWriter<
   replace(
     id: GenericId<TableName>,
     value: WithOptionalSystemFields<DocumentByName<DataModel, TableName>>,
-  ): Promise<void>;
+  ): Effect.Effect<void>;
 
   /**
    * Delete an existing document.
    *
    * @param id - The {@link values.GenericId} of the document to remove.
    */
-  delete(id: GenericId<TableName>): Promise<void>;
+  delete(id: GenericId<TableName>): Effect.Effect<void>;
 }
 
 /**

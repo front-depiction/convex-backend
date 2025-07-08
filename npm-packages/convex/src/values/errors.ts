@@ -1,14 +1,12 @@
-import { Value, stringifyValueForError } from "./value.js";
+import { Value } from "./value.js";
+import * as Data from "effect/Data"
 
-const IDENTIFYING_FIELD = Symbol.for("ConvexError");
 
-export class ConvexError<TData extends Value> extends Error {
-  name = "ConvexError";
+
+export class ConvexError<TData extends Value> extends Data.TaggedError("ConvexError")<{
   data: TData;
-  [IDENTIFYING_FIELD] = true;
+}> { }
 
-  constructor(data: TData) {
-    super(typeof data === "string" ? data : stringifyValueForError(data));
-    this.data = data;
-  }
-}
+export class JSONError extends Data.TaggedError("JSONError")<{
+  message: string;
+}> { }

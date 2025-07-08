@@ -152,12 +152,11 @@ export async function throwingFetch(
     // eslint-disable-next-line no-restricted-syntax
     throw await ThrowingFetchError.fromResponse(
       response,
-      `Error fetching ${options?.method ? options.method + " " : ""} ${
-        typeof resource === "string"
-          ? resource
-          : "url" in resource
-            ? resource.url
-            : resource.toString()
+      `Error fetching ${options?.method ? options.method + " " : ""} ${typeof resource === "string"
+        ? resource
+        : "url" in resource
+          ? resource.url
+          : resource.toString()
       }`,
     );
   }
@@ -321,24 +320,24 @@ export async function selectDevDeploymentType(
     forceDevDeployment,
   }:
     | {
-        chosenConfiguration: "new" | "existing" | "ask" | null;
-        newOrExisting: "existing";
-        teamSlug: string;
-        projectSlug: string;
-        userHasChosenSomethingInteractively: boolean;
-        devDeploymentFromFlag: "cloud" | "local" | undefined;
-        forceDevDeployment: "cloud" | "local" | undefined;
-      }
+      chosenConfiguration: "new" | "existing" | "ask" | null;
+      newOrExisting: "existing";
+      teamSlug: string;
+      projectSlug: string;
+      userHasChosenSomethingInteractively: boolean;
+      devDeploymentFromFlag: "cloud" | "local" | undefined;
+      forceDevDeployment: "cloud" | "local" | undefined;
+    }
     | {
-        chosenConfiguration: "new" | "existing" | "ask" | null;
-        newOrExisting: "new";
-        teamSlug: string;
-        // For new projects we don't know the project slug yet.
-        projectSlug: undefined;
-        userHasChosenSomethingInteractively: boolean;
-        devDeploymentFromFlag: "cloud" | "local" | undefined;
-        forceDevDeployment: "cloud" | "local" | undefined;
-      },
+      chosenConfiguration: "new" | "existing" | "ask" | null;
+      newOrExisting: "new";
+      teamSlug: string;
+      // For new projects we don't know the project slug yet.
+      projectSlug: undefined;
+      userHasChosenSomethingInteractively: boolean;
+      devDeploymentFromFlag: "cloud" | "local" | undefined;
+      forceDevDeployment: "cloud" | "local" | undefined;
+    },
 ): Promise<{ devDeployment: "cloud" | "local" }> {
   if (forceDevDeployment) return { devDeployment: forceDevDeployment };
   if (devDeploymentFromFlag) return { devDeployment: devDeploymentFromFlag };
@@ -479,9 +478,8 @@ export async function loadPackageJson(
     return await ctx.crash({
       exitCode: 1,
       errorType: "invalid filesystem data",
-      printedMessage: `Unable to read your package.json: ${
-        err as any
-      }. Make sure you're running this command from the root directory of a Convex app that contains the package.json`,
+      printedMessage: `Unable to read your package.json: ${err as any
+        }. Make sure you're running this command from the root directory of a Convex app that contains the package.json`,
     });
   }
   let obj;
@@ -578,12 +576,12 @@ export async function bigBrainFetch(ctx: Context): Promise<typeof fetch> {
   const authHeader = await ctx.bigBrainAuth()?.header;
   const bigBrainHeaders: Record<string, string> = authHeader
     ? {
-        Authorization: authHeader,
-        "Convex-Client": `npm-cli-${version}`,
-      }
+      Authorization: authHeader,
+      "Convex-Client": `npm-cli-${version}`,
+    }
     : {
-        "Convex-Client": `npm-cli-${version}`,
-      };
+      "Convex-Client": `npm-cli-${version}`,
+    };
   return (resource: RequestInfo | URL, options: RequestInit | undefined) => {
     const { headers: optionsHeaders, ...rest } = options || {};
     const headers = {
@@ -662,8 +660,8 @@ export async function bigBrainAPIMaybeThrows({
     headers:
       method === "POST" || method === "post"
         ? {
-            "Content-Type": "application/json",
-          }
+          "Content-Type": "application/json",
+        }
         : {},
   });
   deprecationCheckWarning(ctx, res);
@@ -1112,6 +1110,7 @@ export function isWebContainer(): boolean {
     blitzInternalEnv = dynamicRequire("@blitz/internal/env");
     // totally fine for this require to fail
     // eslint-disable-next-line no-empty
-  } catch {}
+  } catch { }
   return blitzInternalEnv !== null && blitzInternalEnv !== undefined;
 }
+

@@ -1,5 +1,6 @@
 import { FunctionReference, OptionalRestArgs } from "../server/api.js";
 import { Id } from "../values/value.js";
+import * as Effect from "effect/Effect";
 
 /**
  * A {@link FunctionReference} that can be scheduled to run in the future.
@@ -42,7 +43,7 @@ export interface Scheduler {
     delayMs: number,
     functionReference: FuncRef,
     ...args: OptionalRestArgs<FuncRef>
-  ): Promise<Id<"_scheduled_functions">>;
+  ): Effect.Effect<Id<"_scheduled_functions">>;
 
   /**
    * Schedule a function to execute at a given timestamp.
@@ -59,7 +60,7 @@ export interface Scheduler {
     timestamp: number | Date,
     functionReference: FuncRef,
     ...args: OptionalRestArgs<FuncRef>
-  ): Promise<Id<"_scheduled_functions">>;
+  ): Effect.Effect<Id<"_scheduled_functions">>;
 
   /**
    * Cancels a previously scheduled function if it has not started yet. If the
@@ -68,5 +69,5 @@ export interface Scheduler {
    *
    * @param id
    */
-  cancel(id: Id<"_scheduled_functions">): Promise<void>;
+  cancel(id: Id<"_scheduled_functions">): Effect.Effect<void>;
 }

@@ -1,4 +1,11 @@
 import { JSONValue } from "../values/index.js";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Data from "effect/Data";
+
+export class AuthError extends Data.TaggedError("AuthError")<{
+  message: string;
+}> { }
 
 /**
  * Information about an authenticated user, derived from a
@@ -151,7 +158,7 @@ export type UserIdentityAttributes = Omit<
 
 /**
  * An interface to access information about the currently authenticated user
- * within Convex query and mutation functions.
+ * within Convex query, mutation, and action functions.
  *
  * @public
  */
@@ -159,10 +166,9 @@ export interface Auth {
   /**
    * Get details about the currently authenticated user.
    *
-   * @returns A promise that resolves to a {@link UserIdentity} if the Convex
-   * client was configured with a valid ID token, or if not, will:
-   * + returns `null` on Convex queries, mutations, actions.
-   * + `throw` on HTTP Actions.
+   * @returns An Effect that, when run, yields an {@link Option.Option} containing a {@link UserIdentity}
+   * if the Convex client was configured with a valid ID token, or {@link Option.none} if not authenticated.
+   * If an authentication error occurs, the Effect will fail with an {@link AuthError}.
    */
-  getUserIdentity(): Promise<UserIdentity | null>;
+  getUserIdentity(): Effect.Effect<Option.Option<UserIdentity>, AuthError>;
 }

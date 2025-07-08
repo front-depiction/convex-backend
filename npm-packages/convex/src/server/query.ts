@@ -10,6 +10,14 @@ import { ExpressionOrValue, FilterBuilder } from "./filter_builder.js";
 import { IndexRange, IndexRangeBuilder } from "./index_range_builder.js";
 import { PaginationResult, PaginationOptions } from "./pagination.js";
 import { SearchFilter, SearchFilterBuilder } from "./search_filter_builder.js";
+import type * as Effect from "effect/Effect";
+import type * as Option from "effect/Option";
+import * as Data from "effect/Data";
+import type * as Stream from "effect/Stream";
+
+export class UniqueQueryError extends Data.TaggedError("UniqueQueryError")<{
+  message: string;
+}> { }
 
 /**
  * The {@link QueryInitializer} interface is the entry point for building a {@link Query}
@@ -100,7 +108,7 @@ export interface QueryInitializer<TableInfo extends GenericTableInfo>
    *
    * @internal
    */
-  count(): Promise<number>;
+  count(): Effect.Effect<number>;
 }
 
 /**
@@ -155,7 +163,7 @@ export interface Query<TableInfo extends GenericTableInfo>
  * @public
  */
 export interface OrderedQuery<TableInfo extends GenericTableInfo>
-  extends AsyncIterable<DocumentByInfo<TableInfo>> {
+  extends Stream.Stream<DocumentByInfo<TableInfo>> {
   /**
    * Filter the query output, returning only the values for which `predicate` evaluates to true.
    *
@@ -193,7 +201,7 @@ export interface OrderedQuery<TableInfo extends GenericTableInfo>
    */
   paginate(
     paginationOpts: PaginationOptions,
-  ): Promise<PaginationResult<DocumentByInfo<TableInfo>>>;
+  ): Effect.Effect<PaginationResult<DocumentByInfo<TableInfo>>>;
 
   /**
    * Execute the query and return all of the results as an array.
@@ -203,7 +211,7 @@ export interface OrderedQuery<TableInfo extends GenericTableInfo>
    *
    * @returns - An array of all of the query's results.
    */
-  collect(): Promise<Array<DocumentByInfo<TableInfo>>>;
+  collect(): Effect.Effect<Array<DocumentByInfo<TableInfo>>>;
 
   /**
    * Execute the query and return the first `n` results.
@@ -212,14 +220,14 @@ export interface OrderedQuery<TableInfo extends GenericTableInfo>
    * @returns - An array of the first `n` results of the query (or less if the
    * query doesn't have `n` results).
    */
-  take(n: number): Promise<Array<DocumentByInfo<TableInfo>>>;
+  take(n: number): Effect.Effect<Array<DocumentByInfo<TableInfo>>>;
 
   /**
    * Execute the query and return the first result if there is one.
    *
    * @returns - The first value of the query or `null` if the query returned no results.
    * */
-  first(): Promise<DocumentByInfo<TableInfo> | null>;
+  first(): Effect.Effect<Option.Option<DocumentByInfo<TableInfo>>>;
 
   /**
    * Execute the query and return the singular result if there is one.
@@ -227,5 +235,5 @@ export interface OrderedQuery<TableInfo extends GenericTableInfo>
    * @returns - The single result returned from the query or null if none exists.
    * @throws  Will throw an error if the query returns more than one result.
    */
-  unique(): Promise<DocumentByInfo<TableInfo> | null>;
+  unique(): Effect.Effect<Option.Option<DocumentByInfo<TableInfo>>, UniqueQueryError>;
 }
